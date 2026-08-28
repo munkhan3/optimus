@@ -17,34 +17,16 @@ from sqlmodel import Session, select
 
 from ..db import get_session
 from ..models import Goal, Milestone
+from ..repo.write_rules import check_activation
 from ..schemas import GoalCreate, GoalUpdate, MilestoneCreate
 
 router = APIRouter(prefix="/api", tags=["goals"])
 
 
-def _check_activation(goal: Goal) -> None:
-    """D1/D4 and AC1, with an explanation instead of a 500."""
-    if goal.activation != "active":
-        return
-    if not goal.definition_of_done.strip():
-        raise HTTPException(
-            422,
-            "A goal cannot be activated without a definition of done: "
-            "work that cannot be recognized as complete cannot be planned against.",
-        )
-    # §9: a vision is directional and unbounded, so it never carries a deadline.
-    if goal.kind != "vision" and goal.deadline is None:
-        raise HTTPException(
-            422,
-            "An active goal needs a deadline. A goal with no deadline is not being "
-            "worked on -- it is an intention, and belongs parked.",
-        )
-
-
 @router.post("/goals", status_code=status.HTTP_201_CREATED)
 def create_goal(body: GoalCreate, db: Session = Depends(get_session)) -> dict:
     goal = Goal(**body.model_dump())
-    _check_activation(goal)
+    check_activation(goal)
     db.add(goal)
     db.commit()
     db.refresh(goal)
@@ -63,7 +45,7 @@ def update_goal(goal_id: int, body: GoalUpdate, db: Session = Depends(get_sessio
         raise HTTPException(404, f"goal {goal_id} not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(goal, field, value)
-    _check_activation(goal)
+    check_activation(goal)
     db.add(goal)
     db.commit()
     db.refresh(goal)

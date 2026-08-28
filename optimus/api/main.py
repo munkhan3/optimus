@@ -20,10 +20,12 @@ from .routers import (
     baselines,
     capacity,
     goals,
+    intake,
     planning,
     reviews,
     sessions,
     trackables,
+    tree,
 )
 from .settings import get_metrics_config
 
@@ -45,6 +47,8 @@ for router in (
     planning.router,
     assistant.router,
     reviews.router,
+    intake.router,
+    tree.router,
 ):
     app.include_router(router, dependencies=[Depends(require_token)])
 

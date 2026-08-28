@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from ..db import get_session
-from ..models import Baseline, Goal, Milestone, OpenGap, Trackable
+from ..models import Baseline, Milestone, Trackable
 from ..repo import metrics_service
+from ..repo.write_rules import gap_for_estimated_units
 from ..schemas import TrackableCreate
 from ..settings import get_metrics_config
 
@@ -30,25 +31,9 @@ def create_trackable(body: TrackableCreate, db: Session = Depends(get_session)) 
     db.add(trackable)
     db.flush()
 
-    # AC18 / D3: a model-estimated total_units must never be recorded silently.
-    # The gap is written in the same transaction as the estimate, so the two
-    # cannot come apart.
-    gap: OpenGap | None = None
-    if trackable.total_units_source == "model_estimated":
-        goal = db.get(Goal, milestone.goal_id)
-        stakes = goal.stakes if goal else 3
-        gap = OpenGap(
-            trackable_id=trackable.id,
-            milestone_id=milestone.id,
-            question=(
-                f"How many {trackable.unit} is '{trackable.title}' really? "
-                f"I estimated {trackable.total_units:g} but did not verify it."
-            ),
-            # §15.3: stakes x uncertainty. An unverified estimate is maximally
-            # uncertain, so priority is carried by the stakes of its goal.
-            priority=float(stakes),
-        )
-        db.add(gap)
+    # AC18 / D3: the gap is written in the same transaction as the estimate,
+    # so the two cannot come apart. Shared with the intake path.
+    gap = gap_for_estimated_units(db, trackable, milestone)
 
     db.commit()
     db.refresh(trackable)

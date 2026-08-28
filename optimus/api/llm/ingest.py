@@ -37,6 +37,13 @@ Provenance = Literal["grounded", "user_supplied", "model_estimated"]
 
 
 class ProposedTrackable(BaseModel):
+    key: str = Field(
+        description=(
+            "A short stable slug identifying this node, e.g. 'green-book'. "
+            "When you modify an existing node, KEEP its key exactly. Mint a new "
+            "key only for a node that did not exist before."
+        )
+    )
     title: str
     unit: str = Field(description="The natural counter, e.g. 'pages'. Omit if none exists.")
     total_units: float
@@ -51,9 +58,24 @@ class ProposedTrackable(BaseModel):
     prior_pace: float | None = Field(
         default=None, description="The user's own stated units-per-session estimate, if given."
     )
+    target_date: str | None = Field(
+        default=None,
+        description=(
+            "ISO date this should be finished by, if the user gave one. Null "
+            "inherits the milestone's deadline; without either there is no "
+            "baseline to measure drift against."
+        ),
+    )
 
 
 class ProposedMilestone(BaseModel):
+    key: str = Field(
+        description=(
+            "A short stable slug identifying this node, e.g. 'green-book'. "
+            "When you modify an existing node, KEEP its key exactly. Mint a new "
+            "key only for a node that did not exist before."
+        )
+    )
     title: str
     definition_of_done: str = Field(
         description=(
@@ -78,6 +100,13 @@ class ProposedMilestone(BaseModel):
 
 
 class ProposedGoal(BaseModel):
+    key: str = Field(
+        description=(
+            "A short stable slug identifying this node, e.g. 'green-book'. "
+            "When you modify an existing node, KEEP its key exactly. Mint a new "
+            "key only for a node that did not exist before."
+        )
+    )
     title: str
     kind: Literal["vision", "goal"] = "goal"
     definition_of_done: str
@@ -100,6 +129,7 @@ class ProposedGoal(BaseModel):
 
 
 class ProposedGap(BaseModel):
+    key: str = Field(description="Stable slug for this question, so answers can be matched to it.")
     question: str = Field(
         description=(
             "Ask for a verifiable condition when no natural counter exists. "
