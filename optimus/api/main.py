@@ -1,4 +1,4 @@
-"""Goal OS API.
+"""Optimus API.
 
 Every route below /api requires the single-user bearer token (§19). The built
 frontend is served from / so one Fly app serves both.
@@ -28,7 +28,7 @@ from .routers import (
 from .settings import get_metrics_config
 
 app = FastAPI(
-    title="Goal OS",
+    title="Optimus",
     description=(
         "A personal operating system that compiles long-term intent into today's "
         "highest-value actions, and measures whether they produced progress."

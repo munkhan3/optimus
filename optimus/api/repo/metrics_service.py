@@ -6,7 +6,7 @@ which moves goal health -- and it must do so because everything is derived from
 the sessions table on read, not because something wrote an "on track" flag.
 
 Nothing here computes a metric itself. If arithmetic appears in this file, it
-belongs in goalos/metrics instead.
+belongs in optimus/metrics instead.
 """
 
 from __future__ import annotations
@@ -17,18 +17,18 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from goalos.metrics.calibration import calibration
-from goalos.metrics.drift import drift_against_all
-from goalos.metrics.feasibility import (
+from optimus.metrics.calibration import calibration
+from optimus.metrics.drift import drift_against_all
+from optimus.metrics.feasibility import (
     feasibility,
     feasibility_from_session_budget,
     projection,
 )
-from goalos.metrics.health import goal_health
-from goalos.metrics.pace import empirical_pace, required_pace
-from goalos.metrics.progress import percent_complete, remaining_units
-from goalos.metrics.stall import detect_stall
-from goalos.metrics.types import PaceMode
+from optimus.metrics.health import goal_health
+from optimus.metrics.pace import empirical_pace, required_pace
+from optimus.metrics.progress import percent_complete, remaining_units
+from optimus.metrics.stall import detect_stall
+from optimus.metrics.types import PaceMode
 
 from ..models import Goal, Milestone, ProgressCheckRow, Trackable, WorkSession
 from ..settings import get_metrics_config

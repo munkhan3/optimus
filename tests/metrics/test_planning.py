@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from goalos.metrics.drift import drift
-from goalos.metrics.pace import empirical_pace
-from goalos.metrics.rebaseline import (
+from optimus.metrics.drift import drift
+from optimus.metrics.pace import empirical_pace
+from optimus.metrics.rebaseline import (
     FOUR_OPTIONS,
     evaluate_exploratory,
     evaluate_metered,
 )
-from goalos.metrics.redistribute import assign_tier, redistribute
-from goalos.metrics.scoring import rank, score_item
-from goalos.metrics.types import ScoredItem, ScoreInputs, StallReport
+from optimus.metrics.redistribute import assign_tier, redistribute
+from optimus.metrics.scoring import rank, score_item
+from optimus.metrics.types import ScoredItem, ScoreInputs, StallReport
 
 # ------------------------------------------------------------------ scoring
 
@@ -141,7 +141,7 @@ def test_immaterial_drift_never_prompts(config, session_factory):
 
 
 def test_unknown_pace_never_prompts(config, session_factory):
-    from goalos.metrics.types import Basis, PaceEstimate
+    from optimus.metrics.types import Basis, PaceEstimate
 
     p = PaceEstimate(None, Basis.UNAVAILABLE)
     d = drift(100, p, 5, 1)

@@ -22,7 +22,7 @@ def get_client() -> anthropic.Anthropic:
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise LLMUnavailable(
-            "GOALOS_ANTHROPIC_API_KEY is not set; the assistant and ingestion are offline."
+            "OPTIMUS_ANTHROPIC_API_KEY is not set; the assistant and ingestion are offline."
         )
     return anthropic.Anthropic(api_key=settings.anthropic_api_key)
 

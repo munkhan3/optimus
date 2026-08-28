@@ -8,16 +8,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from goalos.metrics.config import MetricsConfig
+from optimus.metrics.config import MetricsConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config.toml"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="GOALOS_", env_file=".env.local")
+    model_config = SettingsConfigDict(env_prefix="OPTIMUS_", env_file=".env.local")
 
-    database_url: str = "postgresql+psycopg://localhost/goalos"
+    database_url: str = "postgresql+psycopg://localhost/optimus"
 
     # §19: single-user, so one bearer token suffices -- but the app is reachable
     # from the public internet, so this token is the only thing between the

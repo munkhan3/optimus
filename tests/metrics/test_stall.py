@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from goalos.metrics.stall import detect_stall
+from optimus.metrics.stall import detect_stall
 
 
 def _sessions(days, session_factory):

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from goalos.metrics.pace import empirical_pace, required_pace
-from goalos.metrics.types import Basis
+from optimus.metrics.pace import empirical_pace, required_pace
+from optimus.metrics.types import Basis
 
 
 def test_no_prior_no_sessions_is_unavailable_not_zero(config):

@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from goalos.metrics.types import (
+from optimus.metrics.types import (
     BaselineState,
     PaceMode,
     ProgressCheck,

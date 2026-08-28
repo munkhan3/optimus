@@ -71,7 +71,7 @@ export default function App() {
       <header className="safe-top sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <div>
-            <div className="text-sm font-bold tracking-tight">Goal OS</div>
+            <div className="text-sm font-bold tracking-tight">Optimus</div>
             <div className="text-[11px] text-muted">
               {new Date().toLocaleDateString(undefined, {
                 weekday: "long",
@@ -136,7 +136,7 @@ function TokenGate({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm items-center px-4">
       <Card className="w-full">
-        <div className="text-base font-bold">Goal OS</div>
+        <div className="text-base font-bold">Optimus</div>
         <p className="mt-1 text-xs text-muted">
           Paste your access token. Single user, so this is the only credential — it is stored on
           this device.

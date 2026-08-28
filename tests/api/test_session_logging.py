@@ -104,7 +104,7 @@ def test_a_session_needs_something_to_attach_to(client: TestClient):
 
 def test_unauthenticated_requests_are_refused(seeded: dict):
     """§19: the token is the only thing between the internet and this data."""
-    from goalos.api.main import app
+    from optimus.api.main import app
 
     with TestClient(app) as anon:
         assert anon.get("/api/trackables").status_code == 401

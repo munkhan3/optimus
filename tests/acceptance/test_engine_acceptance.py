@@ -15,17 +15,17 @@ from datetime import date
 
 import pytest
 
-from goalos.metrics.calibration import calibration
-from goalos.metrics.drift import drift
-from goalos.metrics.feasibility import feasibility, projection
-from goalos.metrics.health import goal_health
-from goalos.metrics.pace import empirical_pace, required_pace
-from goalos.metrics.progress import percent_complete, remaining_units
-from goalos.metrics.rebaseline import evaluate_metered
-from goalos.metrics.redistribute import redistribute
-from goalos.metrics.scoring import rank
-from goalos.metrics.stall import detect_stall
-from goalos.metrics.types import (
+from optimus.metrics.calibration import calibration
+from optimus.metrics.drift import drift
+from optimus.metrics.feasibility import feasibility, projection
+from optimus.metrics.health import goal_health
+from optimus.metrics.pace import empirical_pace, required_pace
+from optimus.metrics.progress import percent_complete, remaining_units
+from optimus.metrics.rebaseline import evaluate_metered
+from optimus.metrics.redistribute import redistribute
+from optimus.metrics.scoring import rank
+from optimus.metrics.stall import detect_stall
+from optimus.metrics.types import (
     Basis,
     PaceMode,
     ScoreInputs,

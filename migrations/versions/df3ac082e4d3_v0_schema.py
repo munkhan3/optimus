@@ -13,7 +13,7 @@ import sqlmodel
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from goalos.api.db import COMPLETED_UNITS_TRIGGER, DROP_COMPLETED_UNITS_TRIGGER
+from optimus.api.db import COMPLETED_UNITS_TRIGGER, DROP_COMPLETED_UNITS_TRIGGER
 
 revision: str = 'df3ac082e4d3'
 down_revision: str | None = None

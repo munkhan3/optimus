@@ -1,4 +1,4 @@
-# Goal OS
+# Optimus
 
 A personal operating system that translates long-term intent into today's actions,
 measures whether those actions produced progress, and updates its model of how you
@@ -29,17 +29,17 @@ Requires PostgreSQL and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 brew install postgresql@17 uv && brew services start postgresql@17
-createdb goalos && createdb goalos_test
+createdb optimus && createdb optimus_test
 
 uv sync
 uv run alembic upgrade head
 
 cat > .env.local <<'ENV'
-GOALOS_AUTH_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
-GOALOS_DATABASE_URL=postgresql+psycopg://localhost/goalos
+OPTIMUS_AUTH_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
+OPTIMUS_DATABASE_URL=postgresql+psycopg://localhost/optimus
 ENV
 
-uv run uvicorn goalos.api.main:app --port 8077 --reload
+uv run uvicorn optimus.api.main:app --port 8077 --reload
 ```
 
 Frontend, in a second shell:
@@ -49,7 +49,7 @@ cd frontend && npm install && npm run dev     # dev server, proxies /api
 cd frontend && npm run build                  # or build once; FastAPI serves dist/
 ```
 
-The assistant and ingestion need `GOALOS_ANTHROPIC_API_KEY` in `.env.local`. Without
+The assistant and ingestion need `OPTIMUS_ANTHROPIC_API_KEY` in `.env.local`. Without
 it those two endpoints return 503 rather than degrading silently.
 
 ## Tests
@@ -68,14 +68,14 @@ indexes on `baseline`, and the JSONB check on `score_breakdown`.
 ## Layout
 
 ```
-goalos/metrics/   pure engine — stdlib only, no framework, no database
-goalos/api/       FastAPI, SQLModel, the repo layer that bridges to the engine
-goalos/api/llm/   ingestion + the nine read-only assistant tools
+optimus/metrics/   pure engine — stdlib only, no framework, no database
+optimus/api/       FastAPI, SQLModel, the repo layer that bridges to the engine
+optimus/api/llm/   ingestion + the nine read-only assistant tools
 frontend/         React + Vite + Tailwind, mobile-first
 config.toml       every hand-set constant from vision.md
 ```
 
-`goalos/metrics/` imports nothing outside the standard library, enforced by an AST
+`optimus/metrics/` imports nothing outside the standard library, enforced by an AST
 test rather than by discipline. That is what keeps the engine testable without a
 database and free of hidden reads.
 
@@ -84,8 +84,8 @@ database and free of hidden reads.
 ```bash
 fly launch --no-deploy
 fly postgres create && fly postgres attach <name>
-fly secrets set GOALOS_AUTH_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
-fly secrets set GOALOS_ANTHROPIC_API_KEY=sk-ant-...
+fly secrets set OPTIMUS_AUTH_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
+fly secrets set OPTIMUS_ANTHROPIC_API_KEY=sk-ant-...
 fly deploy
 ```
 

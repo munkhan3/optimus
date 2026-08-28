@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from goalos.metrics.rebaseline import FOUR_OPTIONS
+from optimus.metrics.rebaseline import FOUR_OPTIONS
 
 from ..db import get_session
 from ..models import Baseline

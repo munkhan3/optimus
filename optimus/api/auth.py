@@ -29,7 +29,7 @@ def require_token(
     if not settings.auth_token:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GOALOS_AUTH_TOKEN is not configured; refusing all requests.",
+            detail="OPTIMUS_AUTH_TOKEN is not configured; refusing all requests.",
         )
     if credentials is None or not secrets.compare_digest(
         credentials.credentials, settings.auth_token

@@ -18,7 +18,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from goalos.metrics.stall import detect_stall
+from optimus.metrics.stall import detect_stall
 
 from ..models import (
     Baseline,

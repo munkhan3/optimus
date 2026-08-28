@@ -1,10 +1,10 @@
-# Goal OS on Fly.io.
+# Optimus on Fly.io.
 #
 # §27 defers deployment until phone access matters; this build brings it
 # forward, which is the right call for P5 -- logging must be nearly free, and it
 # is not free if it requires being at a laptop.
 
-app = "goalos"
+app = "optimus"
 primary_region = "iad"
 
 [build]

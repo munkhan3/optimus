@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from goalos.metrics.config import MetricsConfig
-from goalos.metrics.types import ProgressCheck, SessionObs
+from optimus.metrics.config import MetricsConfig
+from optimus.metrics.types import ProgressCheck, SessionObs
 
 # pytest only permits this in the root conftest.
 pytest_plugins = ["tests.db_fixtures"]

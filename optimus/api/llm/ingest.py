@@ -122,7 +122,7 @@ class IngestProposal(BaseModel):
 
 
 SYSTEM = """\
-You are the intake assistant for Goal OS, a personal planning system for a single user.
+You are the intake assistant for Optimus, a personal planning system for a single user.
 
 Your job is to turn an unstructured brain dump into a structured PROPOSAL. You do
 not write to any database; the user reviews and edits everything you produce.

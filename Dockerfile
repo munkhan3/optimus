@@ -26,7 +26,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY goalos/ ./goalos/
+COPY optimus/ ./optimus/
 COPY migrations/ ./migrations/
 COPY alembic.ini config.toml ./
 COPY --from=frontend /build/dist ./frontend/dist
@@ -34,4 +34,4 @@ COPY --from=frontend /build/dist ./frontend/dist
 RUN uv sync --frozen --no-dev
 
 EXPOSE 8080
-CMD ["uvicorn", "goalos.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "optimus.api.main:app", "--host", "0.0.0.0", "--port", "8080"]

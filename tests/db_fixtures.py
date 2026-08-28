@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 TEST_DB_URL = os.environ.get(
-    "GOALOS_TEST_DATABASE_URL", "postgresql+psycopg://localhost/goalos_test"
+    "OPTIMUS_TEST_DATABASE_URL", "postgresql+psycopg://localhost/optimus_test"
 )
 TEST_TOKEN = "test-token"
 
@@ -36,11 +36,11 @@ TABLES = (
 
 @pytest.fixture(scope="session")
 def _env() -> Iterator[None]:
-    os.environ["GOALOS_DATABASE_URL"] = TEST_DB_URL
-    os.environ["GOALOS_AUTH_TOKEN"] = TEST_TOKEN
+    os.environ["OPTIMUS_DATABASE_URL"] = TEST_DB_URL
+    os.environ["OPTIMUS_AUTH_TOKEN"] = TEST_TOKEN
     # Settings and the engine are cached, so they must be built after the
     # environment is set or the tests would talk to the development database.
-    from goalos.api import db, settings
+    from optimus.api import db, settings
 
     settings.get_settings.cache_clear()
     settings.get_metrics_config.cache_clear()
@@ -59,7 +59,7 @@ def _migrated(_env) -> Iterator[None]:
     from alembic import command
     from alembic.config import Config
 
-    from goalos.api.db import get_engine
+    from optimus.api.db import get_engine
 
     with get_engine().begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
@@ -73,7 +73,7 @@ def _migrated(_env) -> Iterator[None]:
 def db_session(_clean) -> Iterator:
     from sqlmodel import Session
 
-    from goalos.api.db import get_engine
+    from optimus.api.db import get_engine
 
     with Session(get_engine()) as session:
         yield session
@@ -82,7 +82,7 @@ def db_session(_clean) -> Iterator:
 @pytest.fixture
 def _clean(_migrated) -> Iterator[None]:
     """Each test starts from an empty database and identity counters at 1."""
-    from goalos.api.db import get_engine
+    from optimus.api.db import get_engine
 
     with get_engine().begin() as conn:
         conn.execute(
@@ -93,7 +93,7 @@ def _clean(_migrated) -> Iterator[None]:
 
 @pytest.fixture
 def client(_clean) -> Iterator[TestClient]:
-    from goalos.api.main import app
+    from optimus.api.main import app
 
     with TestClient(app) as c:
         c.headers.update({"Authorization": f"Bearer {TEST_TOKEN}"})

@@ -1,6 +1,6 @@
-# Goal OS configuration.
+# Optimus configuration.
 #
-# Every hand-set constant in vision.md lives here (§27). Nothing in goalos/metrics/
+# Every hand-set constant in vision.md lives here (§27). Nothing in optimus/metrics/
 # may hardcode a number that belongs in this file.
 #
 # Values marked PLACEHOLDER are guesses that vision.md explicitly expects to be

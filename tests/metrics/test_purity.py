@@ -15,7 +15,7 @@ import ast
 import sys
 from pathlib import Path
 
-METRICS_DIR = Path(__file__).resolve().parents[2] / "goalos" / "metrics"
+METRICS_DIR = Path(__file__).resolve().parents[2] / "optimus" / "metrics"
 
 # Anything outside the standard library is a dependency. Named explicitly so the
 # failure message can be specific about what leaked in.
@@ -48,7 +48,7 @@ def _imported_roots(path: Path) -> set[str]:
             for alias in node.names:
                 roots.add(alias.name.split(".")[0])
         elif isinstance(node, ast.ImportFrom):
-            if node.level:  # relative import within goalos.metrics -- always fine
+            if node.level:  # relative import within optimus.metrics -- always fine
                 continue
             if node.module:
                 roots.add(node.module.split(".")[0])
@@ -72,11 +72,11 @@ def test_only_stdlib_imports() -> None:
     offenders: list[str] = []
     for path in _module_files():
         for root in sorted(_imported_roots(path)):
-            if root == "goalos":
+            if root == "optimus":
                 continue
             if root not in sys.stdlib_module_names:
                 offenders.append(f"{path.name} imports non-stdlib module {root!r}")
     assert not offenders, (
-        "goalos/metrics must import stdlib only so it can be tested standalone:\n  "
+        "optimus/metrics must import stdlib only so it can be tested standalone:\n  "
         + "\n  ".join(offenders)
     )

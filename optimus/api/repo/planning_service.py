@@ -19,13 +19,13 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from goalos.metrics.config import MetricsConfig
-from goalos.metrics.feasibility import feasibility, feasibility_from_session_budget
-from goalos.metrics.pace import empirical_pace
-from goalos.metrics.progress import remaining_units
-from goalos.metrics.redistribute import assign_tier, redistribute
-from goalos.metrics.scoring import rank
-from goalos.metrics.types import ScoredItem, ScoreInputs
+from optimus.metrics.config import MetricsConfig
+from optimus.metrics.feasibility import feasibility, feasibility_from_session_budget
+from optimus.metrics.pace import empirical_pace
+from optimus.metrics.progress import remaining_units
+from optimus.metrics.redistribute import assign_tier, redistribute
+from optimus.metrics.scoring import rank
+from optimus.metrics.types import ScoredItem, ScoreInputs
 
 from ..models import Goal, Milestone, Task, Trackable
 from . import loader

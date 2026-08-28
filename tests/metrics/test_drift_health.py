@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from goalos.metrics.drift import drift, drift_against_all
-from goalos.metrics.health import goal_health
-from goalos.metrics.pace import empirical_pace
-from goalos.metrics.types import BaselineState, Basis, Drift, Feasibility, PaceEstimate
+from optimus.metrics.drift import drift, drift_against_all
+from optimus.metrics.health import goal_health
+from optimus.metrics.pace import empirical_pace
+from optimus.metrics.types import BaselineState, Basis, Drift, Feasibility, PaceEstimate
 
 
 def _pace(config, session_factory, outputs=(9, 9, 9, 9, 9, 9)):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from goalos.metrics.calibration import calibration, weighted_median
+from optimus.metrics.calibration import calibration, weighted_median
 
 
 def test_weighted_median_matches_plain_median_at_equal_weights():

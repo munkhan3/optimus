@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from goalos.api.llm.tools import TOOL_SCHEMAS, dispatch
+from optimus.api.llm.tools import TOOL_SCHEMAS, dispatch
 from tests.db_fixtures import log_session
 
 
@@ -152,12 +152,12 @@ def test_get_sessions_exposes_the_flags_that_change_weighting(client, populated,
 
 def test_the_assistant_fails_closed_without_a_key(client: TestClient, monkeypatch):
     """P2 again: better offline than quietly worse."""
-    from goalos.api import settings
-    from goalos.api.llm import client as llm_client
+    from optimus.api import settings
+    from optimus.api.llm import client as llm_client
 
     llm_client.get_client.cache_clear()
     settings.get_settings.cache_clear()
-    monkeypatch.setenv("GOALOS_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("OPTIMUS_ANTHROPIC_API_KEY", "")
 
     r = client.post("/api/assistant", json={"question": "how am I doing?"})
     assert r.status_code == 503

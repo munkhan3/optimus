@@ -1,4 +1,4 @@
-# Goal OS — Design Document
+# Optimus — Design Document
 
 **Status:** Living design document
 **Audience:** The author, and Claude Code for implementation
@@ -17,7 +17,7 @@ Part III is the v0 build spec. Part IV is the path from v0 to the north star.
 
 ## 1. North star
 
-> **Goal OS is a personal operating system that continuously translates long-term intent
+> **Optimus is a personal operating system that continuously translates long-term intent
 > into today's highest-value actions, measures whether those actions actually produced
 > progress, and updates its model of how the user works so that each plan is more honest
 > than the last.**
@@ -53,7 +53,7 @@ much they have done. Without objective feedback, a plan that was never achievabl
 fine for months, and the failure only becomes visible at the deadline, when nothing can be
 done about it.
 
-Goal OS exists to solve all three. Solving only the first is a to-do app.
+Optimus exists to solve all three. Solving only the first is a to-do app.
 
 ## 3. Why conventional tools fail
 

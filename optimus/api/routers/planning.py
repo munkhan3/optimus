@@ -261,8 +261,8 @@ def generate_day(
 
 
 def _tier(score: float, config, at_risk: bool, est_minutes: int) -> str:
-    from goalos.metrics.redistribute import assign_tier
-    from goalos.metrics.types import ScoredItem
+    from optimus.metrics.redistribute import assign_tier
+    from optimus.metrics.types import ScoredItem
 
     return assign_tier(ScoredItem(score, ()), config, at_risk, est_minutes)
 

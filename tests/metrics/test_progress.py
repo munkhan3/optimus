@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from goalos.metrics.progress import percent_complete, remaining_units
-from goalos.metrics.types import PaceMode, TrackableState
+from optimus.metrics.progress import percent_complete, remaining_units
+from optimus.metrics.types import PaceMode, TrackableState
 
 
 def _trackable(**kw) -> TrackableState:

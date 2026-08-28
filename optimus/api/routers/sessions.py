@@ -17,7 +17,7 @@ from datetime import UTC, date, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
-from goalos.metrics.pace import empirical_pace
+from optimus.metrics.pace import empirical_pace
 
 from ..db import get_session
 from ..models import Milestone, ProgressCheckRow, Trackable, WorkSession

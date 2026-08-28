@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from goalos.metrics.feasibility import (
+from optimus.metrics.feasibility import (
     feasibility,
     feasibility_from_session_budget,
     projection,
 )
-from goalos.metrics.pace import empirical_pace
-from goalos.metrics.types import Basis, PaceEstimate
+from optimus.metrics.pace import empirical_pace
+from optimus.metrics.types import Basis, PaceEstimate
 
 TODAY = date(2026, 8, 28)
 

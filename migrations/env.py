@@ -7,8 +7,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlmodel import SQLModel
 
-from goalos.api import models  # noqa: F401  -- registers every table on the metadata
-from goalos.api.settings import get_settings
+from optimus.api import models  # noqa: F401  -- registers every table on the metadata
+from optimus.api.settings import get_settings
 
 config = context.config
 if config.config_file_name is not None:

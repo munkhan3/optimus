@@ -17,11 +17,11 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
-from goalos.metrics.drift import drift_against_all
-from goalos.metrics.pace import empirical_pace
-from goalos.metrics.progress import remaining_units
-from goalos.metrics.rebaseline import evaluate_exploratory, evaluate_metered
-from goalos.metrics.stall import detect_stall
+from optimus.metrics.drift import drift_against_all
+from optimus.metrics.pace import empirical_pace
+from optimus.metrics.progress import remaining_units
+from optimus.metrics.rebaseline import evaluate_exploratory, evaluate_metered
+from optimus.metrics.stall import detect_stall
 
 from ..db import get_session
 from ..models import (
@@ -109,7 +109,7 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
     # ---- what the system learned about the user this week --------------------
     # §8: completion ratios trending toward 1.0 is a stated success criterion,
     # so calibration is reported per task_type rather than as one number.
-    from goalos.metrics.calibration import calibration as calibrate
+    from optimus.metrics.calibration import calibration as calibrate
 
     calibration_by_type = {}
     for task_type in db.exec(select(WorkSession.task_type).distinct()).all():
