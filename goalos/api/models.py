@@ -1,0 +1,439 @@
+"""The v0 schema (§21), with four corrections to the document.
+
+vision.md is the source of truth, and where this file departs from §21 it is
+because §21 is internally inconsistent. Each departure is marked FIX and is
+mirrored back into the doc:
+
+  FIX 1  A vision cannot be active under §21's CHECK, because it demands a
+         deadline of every active row -- but §9 defines a vision as
+         "directional, unbounded, never complete". The check now exempts
+         kind='vision'.
+
+  FIX 2  open_gap has no trackable_id, yet acceptance test 18 requires a gap
+         row whenever a model_estimated total_units is written, and
+         total_units lives on trackable. Added.
+
+  FIX 3  baseline and progress_check may attach to either a trackable or a
+         milestone, but only the trackable side was unique-constrained and
+         neither forbade attaching to both or neither. Added an exactly-one
+         check and the missing uniqueness.
+
+  FIX 4  work_session had no task_type, but §24.3 pools pace by it. Reaching it
+         through the trackable breaks for task-only sessions and silently
+         rewrites history if a trackable is reclassified. Denormalized onto the
+         session at write time.
+
+The enum-ish TEXT columns keep §21's shape rather than becoming Postgres enums:
+adding a value to a CHECK constraint is a cheaper migration than altering a
+type, and this schema is expected to churn through M2-M4.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Column,
+    Index,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlmodel import Field, SQLModel
+
+# --------------------------------------------------------------- vocabularies
+
+KIND = ("vision", "goal")
+ACTIVATION = ("active", "parked")
+PACE_MODE = ("carry_forward", "reset_period")
+PROVENANCE = ("grounded", "user_supplied", "model_estimated")
+DOD_SOURCE = ("user_supplied", "model_estimated")
+NODE_STATUS = ("not_started", "in_progress", "done", "abandoned")
+TASK_STATUS = ("open", "done", "deferred", "dropped")
+TRACKABLE_STATUS = ("not_started", "in_progress", "done", "abandoned")
+GAP_STATUS = ("open", "answered", "dismissed")
+TIER = ("A", "B", "C", "D")
+USER_ACTION = ("accepted", "modified", "rejected", "deferred")
+RESOLUTION = ("add_sessions", "cut_scope", "move_deadline", "declare_infeasible")
+TASK_TYPE = ("reading", "problems", "writing", "exploratory", "admin")
+
+
+def _in(column: str, values: tuple[str, ...]) -> str:
+    joined = ", ".join(f"'{v}'" for v in values)
+    return f"{column} IN ({joined})"
+
+
+def _utcnow() -> datetime:
+    from datetime import UTC
+
+    return datetime.now(UTC)
+
+
+# ---------------------------------------------------------------------- goal
+
+
+class Goal(SQLModel, table=True):
+    __tablename__ = "goal"
+    __table_args__ = (
+        CheckConstraint(_in("kind", KIND), name="goal_kind_valid"),
+        CheckConstraint(_in("activation", ACTIVATION), name="goal_activation_valid"),
+        CheckConstraint(_in("pace_mode", PACE_MODE), name="goal_pace_mode_valid"),
+        CheckConstraint(_in("dod_source", DOD_SOURCE), name="goal_dod_source_valid"),
+        CheckConstraint(_in("status", NODE_STATUS), name="goal_status_valid"),
+        CheckConstraint("stakes BETWEEN 1 AND 5", name="goal_stakes_range"),
+        # D1/D4 and AC1: an active goal needs a deadline -- but a vision is
+        # unbounded by definition and never completes (§9), so it is exempt.
+        # FIX 1 relative to §21.
+        CheckConstraint(
+            "kind = 'vision' OR activation <> 'active' OR deadline IS NOT NULL",
+            name="goal_active_requires_deadline",
+        ),
+        CheckConstraint(
+            "pace_mode <> 'reset_period' OR reset_period_days IS NOT NULL",
+            name="goal_reset_period_requires_days",
+        ),
+        # D1: a goal that cannot be recognized as complete cannot be planned
+        # against (§10). Emptiness is as bad as absence.
+        CheckConstraint(
+            "length(trim(definition_of_done)) > 0", name="goal_dod_not_blank"
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    parent_id: int | None = Field(default=None, foreign_key="goal.id", index=True)
+    title: str
+    description: str | None = None
+    kind: str
+
+    definition_of_done: str
+    dod_source: str
+
+    activation: str = "parked"
+    deadline: date | None = None
+    pace_mode: str = "carry_forward"
+    reset_period_days: int | None = None
+
+    stakes: int = 3
+    status: str = "not_started"
+    verified: bool = False
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Milestone(SQLModel, table=True):
+    __tablename__ = "milestone"
+    __table_args__ = (
+        CheckConstraint(_in("dod_source", DOD_SOURCE), name="milestone_dod_source_valid"),
+        CheckConstraint(_in("status", NODE_STATUS), name="milestone_status_valid"),
+        CheckConstraint(
+            "length(trim(definition_of_done)) > 0", name="milestone_dod_not_blank"
+        ),
+        CheckConstraint("blocked_by IS NULL OR blocked_by <> id", name="milestone_no_self_block"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    goal_id: int = Field(foreign_key="goal.id", index=True)
+    title: str
+    definition_of_done: str
+    dod_source: str
+    deadline: date | None = None
+    blocked_by: int | None = Field(default=None, foreign_key="milestone.id")
+    status: str = "not_started"
+    verified: bool = False
+    # §10: work with no natural counter has no trackable and is budgeted in
+    # sessions instead. Forcing a number here is the most damaging thing the
+    # system can do, so this is how such milestones stay first-class.
+    planned_sessions: int | None = None
+    exploratory: bool = False
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Trackable(SQLModel, table=True):
+    __tablename__ = "trackable"
+    __table_args__ = (
+        CheckConstraint(_in("task_type", TASK_TYPE), name="trackable_task_type_valid"),
+        CheckConstraint(
+            _in("total_units_source", PROVENANCE), name="trackable_units_source_valid"
+        ),
+        CheckConstraint(_in("status", TRACKABLE_STATUS), name="trackable_status_valid"),
+        CheckConstraint("total_units > 0", name="trackable_total_units_positive"),
+        CheckConstraint("completed_units >= 0", name="trackable_completed_non_negative"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    milestone_id: int = Field(foreign_key="milestone.id", index=True)
+    title: str
+    unit: str
+    total_units: float
+    total_units_source: str
+    # A cache of SUM(actual_output), maintained by a database trigger so it
+    # cannot drift from the authoritative value (AC7).
+    completed_units: float = 0.0
+    target_date: date | None = None
+    prior_pace: float | None = None   # the user's own initial units/session estimate
+    task_type: str
+    exploratory: bool = False
+    status: str = "not_started"
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Task(SQLModel, table=True):
+    __tablename__ = "task"
+    __table_args__ = (
+        CheckConstraint(_in("status", TASK_STATUS), name="task_status_valid"),
+        CheckConstraint("blocked_by IS NULL OR blocked_by <> id", name="task_no_self_block"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
+    description: str
+    est_minutes: int | None = None
+    expected_output: float | None = None   # prefilled from pace_hat, never a fixed guess
+    intent: str | None = None              # exploratory: what "done" means this session
+    deadline: date | None = None
+    blocked_by: int | None = Field(default=None, foreign_key="task.id")
+    status: str = "open"
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+# ------------------------------------------------------------------ capacity
+
+
+class Capacity(SQLModel, table=True):
+    __tablename__ = "capacity"
+
+    id: int | None = Field(default=None, primary_key=True)
+    week_start: date = Field(unique=True, index=True)
+    available_hours: float
+    session_minutes: int = 25
+
+
+class GoalBudget(SQLModel, table=True):
+    __tablename__ = "goal_budget"
+    __table_args__ = (
+        UniqueConstraint("capacity_id", "goal_id", name="goal_budget_unique"),
+        CheckConstraint("budgeted_sessions >= 0", name="goal_budget_non_negative"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    capacity_id: int = Field(foreign_key="capacity.id", index=True)
+    goal_id: int = Field(foreign_key="goal.id", index=True)
+    budgeted_sessions: int
+
+
+class WeeklyCommitment(SQLModel, table=True):
+    """D5: committing a session budget weekly fixes the pace denominator."""
+
+    __tablename__ = "weekly_commitment"
+    __table_args__ = (
+        CheckConstraint(
+            "(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)",
+            name="weekly_commitment_exactly_one_target",
+        ),
+        CheckConstraint("committed_sessions >= 0", name="weekly_commitment_non_negative"),
+        Index(
+            "weekly_commitment_trackable_unique",
+            "capacity_id",
+            "trackable_id",
+            unique=True,
+            postgresql_where=text("trackable_id IS NOT NULL"),
+        ),
+        Index(
+            "weekly_commitment_milestone_unique",
+            "capacity_id",
+            "milestone_id",
+            unique=True,
+            postgresql_where=text("milestone_id IS NOT NULL"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    capacity_id: int = Field(foreign_key="capacity.id", index=True)
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id")
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
+    committed_sessions: int
+    target_units: float | None = None
+    committed_at: datetime = Field(default_factory=_utcnow)
+
+
+# ------------------------------------------------------------------ sessions
+
+
+class WorkSession(SQLModel, table=True):
+    """D2/P5. Logging is a checkoff, never an act of measurement."""
+
+    __tablename__ = "work_session"
+    __table_args__ = (
+        CheckConstraint(_in("task_type", TASK_TYPE), name="work_session_task_type_valid"),
+        CheckConstraint("planned_minutes > 0", name="work_session_planned_minutes_positive"),
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= started_at", name="work_session_ends_after_start"
+        ),
+        Index("work_session_task_type_started", "task_type", "started_at"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    task_id: int | None = Field(default=None, foreign_key="task.id")
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
+    # FIX 4: denormalized so pace pooling is a single-table read and history
+    # survives a trackable being reclassified.
+    task_type: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    planned_minutes: int = 25
+    actual_minutes: float | None = None
+    expected_output: float | None = None
+    actual_output: float | None = None
+    intent_met: bool | None = None      # exploratory sessions, instead of a count
+    focus_rating: int | None = None
+    note: str | None = None
+    interrupted: bool = False           # excluded from pace, retained
+    entered_retroactively: bool = False  # D13
+
+
+class ProgressCheckRow(SQLModel, table=True):
+    """D12. Stored in full, read by exactly one thing: stall detection."""
+
+    __tablename__ = "progress_check"
+    __table_args__ = (
+        CheckConstraint(
+            "(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)",
+            name="progress_check_exactly_one_target",  # FIX 3
+        ),
+        CheckConstraint(
+            "self_assessed_pct >= 0 AND self_assessed_pct <= 100",
+            name="progress_check_pct_range",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
+    self_assessed_pct: float
+    session_id: int | None = Field(default=None, foreign_key="work_session.id")
+    note: str | None = None
+    recorded_at: datetime = Field(default_factory=_utcnow)
+
+
+class Baseline(SQLModel, table=True):
+    """§17/§25.3. Version 1 is retained forever and displayed alongside current."""
+
+    __tablename__ = "baseline"
+    __table_args__ = (
+        CheckConstraint(
+            "(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)",
+            name="baseline_exactly_one_target",  # FIX 3
+        ),
+        CheckConstraint("version >= 1", name="baseline_version_positive"),
+        CheckConstraint(
+            "resolution IS NULL OR " + _in("resolution", RESOLUTION),
+            name="baseline_resolution_valid",
+        ),
+        # v1 is the original and carries no resolution; every later version is
+        # the result of an explicit choice and must record which one and why.
+        CheckConstraint(
+            "version = 1 OR (resolution IS NOT NULL AND rationale IS NOT NULL)",
+            name="baseline_rebaseline_requires_reason",
+        ),
+        Index(
+            "baseline_trackable_version_unique",
+            "trackable_id",
+            "version",
+            unique=True,
+            postgresql_where=text("trackable_id IS NOT NULL"),
+        ),
+        Index(  # FIX 3: §21 constrained only the trackable side
+            "baseline_milestone_version_unique",
+            "milestone_id",
+            "version",
+            unique=True,
+            postgresql_where=text("milestone_id IS NOT NULL"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
+    version: int
+    planned_sessions: int
+    scope_units: float | None = None
+    target_date: date
+    resolution: str | None = None
+    rationale: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class OpenGap(SQLModel, table=True):
+    """D3. Anything the model could not responsibly infer becomes a question."""
+
+    __tablename__ = "open_gap"
+    __table_args__ = (
+        CheckConstraint(_in("status", GAP_STATUS), name="open_gap_status_valid"),
+        CheckConstraint(
+            "goal_id IS NOT NULL OR milestone_id IS NOT NULL OR trackable_id IS NOT NULL",
+            name="open_gap_has_a_subject",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    goal_id: int | None = Field(default=None, foreign_key="goal.id", index=True)
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
+    # FIX 2: total_units lives on trackable, and AC18 requires a gap whenever
+    # one is model_estimated. Without this column that test cannot be satisfied.
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
+    question: str
+    priority: float                    # stakes x uncertainty (§15.3)
+    status: str = "open"
+    answer: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+# --------------------------------------------------------------------- plans
+
+
+class DailyPlan(SQLModel, table=True):
+    __tablename__ = "daily_plan"
+
+    id: int | None = Field(default=None, primary_key=True)
+    plan_date: date = Field(unique=True, index=True)
+    generated_at: datetime = Field(default_factory=_utcnow)
+    capacity_minutes: int
+    carried_shortfall: float | None = None  # spread, never dumped (D9)
+    accepted_at: datetime | None = None
+
+
+class PlanItem(SQLModel, table=True):
+    __tablename__ = "plan_item"
+    __table_args__ = (
+        CheckConstraint(_in("tier", TIER), name="plan_item_tier_valid"),
+        CheckConstraint(
+            "user_action IS NULL OR " + _in("user_action", USER_ACTION),
+            name="plan_item_user_action_valid",
+        ),
+        # P3 / AC13. The breakdown is the only way to answer "why this?" and it
+        # is Part IV's training set. An empty one is a bug, not a degraded row.
+        CheckConstraint("score_breakdown::text <> '{}'", name="plan_item_breakdown_not_empty"),
+        CheckConstraint(
+            "(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)",
+            name="plan_item_exactly_one_target",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    daily_plan_id: int = Field(foreign_key="daily_plan.id", index=True)
+    task_id: int | None = Field(default=None, foreign_key="task.id")
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id")
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
+    tier: str
+    score: float                       # from the weekly ranking; NOT recomputed daily
+    score_breakdown: dict[str, Any] = Field(
+        sa_column=Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    )
+    allocated_units: float | None = None
+    rank: int
+    user_action: str | None = None     # revealed preference -- §32's training signal
+    completed: bool = False
