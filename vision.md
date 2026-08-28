@@ -502,7 +502,9 @@ CREATE TABLE goal (
     verified            BOOLEAN NOT NULL DEFAULT 0,
     created_at          TIMESTAMP NOT NULL,
 
-    CHECK (activation <> 'active' OR deadline IS NOT NULL),
+    -- A vision is directional and unbounded (§9), so the deadline rule
+    -- exempts it; without this an active vision is impossible to create.
+    CHECK (kind = 'vision' OR activation <> 'active' OR deadline IS NOT NULL),
     CHECK (pace_mode <> 'reset_period' OR reset_period_days IS NOT NULL)
 );
 
@@ -573,6 +575,11 @@ CREATE TABLE weekly_commitment (                                   -- D9
     milestone_id        INTEGER REFERENCES milestone(id),
     committed_sessions  INTEGER NOT NULL,
     target_units        REAL,
+    -- D9 requires the weekly score to be computed once and reused by every day
+    -- of that week. plan_item is rewritten daily, so the frozen value lives here
+    -- and is copied onto each day's plan_item unchanged.
+    score               REAL,
+    score_breakdown     TEXT,               -- JSON
     committed_at        TIMESTAMP NOT NULL
 );
 
@@ -580,7 +587,12 @@ CREATE TABLE work_session (                                        -- D2, P5
     id                  INTEGER PRIMARY KEY,
     task_id             INTEGER REFERENCES task(id),
     trackable_id        INTEGER REFERENCES trackable(id),
-    started_at          TIMESTAMP NOT NULL,
+    milestone_id        INTEGER REFERENCES milestone(id),
+    -- Denormalized: §24.3 pools pace by task_type, and reaching it through the
+    -- trackable breaks for milestone-only sessions and silently rewrites history
+    -- if a trackable is later reclassified.
+    task_type           TEXT NOT NULL,
+    started_at          TIMESTAMPTZ NOT NULL,
     ended_at            TIMESTAMP,
     planned_minutes     INTEGER NOT NULL,
     actual_minutes      REAL,
@@ -614,13 +626,21 @@ CREATE TABLE baseline (                                            -- §17
     resolution          TEXT,               -- 'add_sessions'|'cut_scope'|'move_deadline'
     rationale           TEXT,
     created_at          TIMESTAMP NOT NULL,
-    UNIQUE (trackable_id, version)
+    -- A baseline attaches to exactly one of the two, and BOTH sides need
+    -- uniqueness; constraining only the trackable side let a milestone acquire
+    -- two version-1 rows.
+    CHECK ((trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)),
+    UNIQUE (trackable_id, version),
+    UNIQUE (milestone_id, version)
 );
 
 CREATE TABLE open_gap (                                            -- D3
     id                  INTEGER PRIMARY KEY,
     goal_id             INTEGER REFERENCES goal(id),
     milestone_id        INTEGER REFERENCES milestone(id),
+    -- total_units lives on trackable, and acceptance test 18 requires a gap
+    -- whenever one is model_estimated. Without this the test cannot be met.
+    trackable_id        INTEGER REFERENCES trackable(id),
     question            TEXT NOT NULL,
     priority            REAL NOT NULL,      -- stakes × uncertainty
     status              TEXT NOT NULL,      -- 'open'|'answered'|'dismissed'
@@ -839,7 +859,7 @@ malformed output.
 | `get_progress_history(milestone_id)` | slider series plus stall flag                   |
 | `get_open_gaps()`                    | unanswered interview questions                  |
 
-No write tools in v0. Model: `claude-sonnet-4-6`.
+No write tools in v0. Model: `claude-sonnet-5`.
 
 ## 27. Stack
 

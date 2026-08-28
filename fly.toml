@@ -1,0 +1,44 @@
+# Goal OS on Fly.io.
+#
+# §27 defers deployment until phone access matters; this build brings it
+# forward, which is the right call for P5 -- logging must be nearly free, and it
+# is not free if it requires being at a laptop.
+
+app = "goalos"
+primary_region = "iad"
+
+[build]
+
+[deploy]
+  # Migrations run before the new machines take traffic. Forward-only.
+  release_command = "alembic upgrade head"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Single user: one machine is the correct number, and suspending it between
+  # sessions costs nothing while keeping cold starts short.
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 60
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  # Health does a real database round-trip, so a machine that cannot reach
+  # Postgres fails the check instead of serving errors.
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
