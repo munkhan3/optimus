@@ -318,3 +318,35 @@ class RebaselineProposal:
             "declare_infeasible",
         )
     )
+
+
+@dataclass(frozen=True)
+class ScoreInputs:
+    """Everything §25.1 needs to rank one candidate, metered or not.
+
+    Deliberately flat and provenance-free: scoring reads numbers, not rows, so
+    a metered trackable and a counter-less milestone arrive in identical shape
+    and are ranked on identical terms (test 6).
+    """
+
+    stakes: int
+    trackable_id: int | None = None
+    milestone_id: int | None = None
+    feasibility_margin_sessions: float | None = None
+    days_to_deadline: int | None = None
+    unblocks_something: bool = False
+    days_since_last_session: int | None = None
+    est_minutes: int | None = None
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class DailyAllocation:
+    """§25.5. Arithmetic, not scoring -- the week's ranking is not recomputed."""
+
+    per_day_units: float
+    baseline_daily: float
+    cap_value: float
+    capped: bool          # True == the week does not fit. A rebaseline signal (D9).
+    working_days_remaining: int
+    remaining_units: float

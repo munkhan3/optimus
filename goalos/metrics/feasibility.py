@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from .config import MetricsConfig
 from .types import Feasibility, PaceEstimate, Projection
 
 
@@ -130,4 +129,57 @@ def projection(
         latest=_date_for(slow),
         provisional=interval.provisional if interval else True,
         target_date=target_date,
+    )
+
+
+def feasibility_from_session_budget(
+    planned_sessions_remaining: float,
+    sessions_available_before_deadline: int | None,
+) -> Feasibility:
+    """Feasibility for work with no natural counter (§10, §21).
+
+    A milestone whose definition of done is a checkable condition rather than a
+    count has no trackable and no units, so `remaining_units / pace_hat` is
+    meaningless for it. Forcing a number here would be the single most damaging
+    thing the system can do (§10) -- every projection downstream would rest on a
+    figure nobody believes.
+
+    Instead such work is budgeted in sessions, and feasibility asks the same
+    question in the same units: do the planned sessions still fit before the
+    deadline. This is what lets §25.1 score metered and unmetered work on
+    identical terms instead of needing a correction factor.
+    """
+    if planned_sessions_remaining <= 0:
+        return Feasibility(
+            feasible=True,
+            sessions_needed=0.0,
+            sessions_available=sessions_available_before_deadline,
+            margin_sessions=float(sessions_available_before_deadline or 0),
+            reason="No sessions remaining in the budget.",
+        )
+
+    if sessions_available_before_deadline is None:
+        return Feasibility(
+            feasible=None,
+            sessions_needed=planned_sessions_remaining,
+            sessions_available=None,
+            margin_sessions=None,
+            reason="No deadline or no committed capacity -- nothing to measure the fit against.",
+        )
+
+    margin = sessions_available_before_deadline - planned_sessions_remaining
+    fits = planned_sessions_remaining <= sessions_available_before_deadline
+    reason = (
+        f"{planned_sessions_remaining:.0f} budgeted sessions, "
+        f"{sessions_available_before_deadline} available -- margin {margin:.1f}."
+        if fits
+        else f"INFEASIBLE: {planned_sessions_remaining:.0f} budgeted sessions but only "
+        f"{sessions_available_before_deadline} available before the deadline."
+    )
+    return Feasibility(
+        feasible=fits,
+        sessions_needed=planned_sessions_remaining,
+        sessions_available=sessions_available_before_deadline,
+        margin_sessions=margin,
+        reason=reason,
     )

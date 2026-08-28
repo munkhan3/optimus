@@ -69,6 +69,22 @@ class SessionConfig:
 
 
 @dataclass(frozen=True)
+class HealthConfig:
+    w_feasibility: float = 0.50
+    w_drift: float = 0.20
+    w_deadline: float = 0.15
+    w_recency: float = 0.15
+    drift_tolerance_sessions: float = 5.0
+    deadline_horizon_days: int = 30
+    staleness_cap_days: int = 14
+
+
+@dataclass(frozen=True)
+class RebaselineConfig:
+    material_drift_sessions: float = 2.0
+
+
+@dataclass(frozen=True)
 class MetricsConfig:
     session: SessionConfig = field(default_factory=SessionConfig)
     pace: PaceConfig = field(default_factory=PaceConfig)
@@ -77,6 +93,8 @@ class MetricsConfig:
     planning: PlanningConfig = field(default_factory=PlanningConfig)
     redistribution: RedistributionConfig = field(default_factory=RedistributionConfig)
     tiers: TierConfig = field(default_factory=TierConfig)
+    health: HealthConfig = field(default_factory=HealthConfig)
+    rebaseline: RebaselineConfig = field(default_factory=RebaselineConfig)
 
     @classmethod
     def from_toml(cls, path: str | Path) -> MetricsConfig:
@@ -105,6 +123,8 @@ class MetricsConfig:
             planning=section("planning", PlanningConfig),
             redistribution=section("redistribution", RedistributionConfig),
             tiers=section("tiers", TierConfig),
+            health=section("health", HealthConfig),
+            rebaseline=section("rebaseline", RebaselineConfig),
         )
 
 

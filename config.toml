@@ -81,3 +81,26 @@ model = "claude-sonnet-5"
 max_tokens = 8192
 # Ingestion returns strict JSON; retry on malformed output (§26).
 ingest_max_retries = 2
+
+[health]
+# §24.8 composite goal health. Components are ALWAYS displayed alongside the
+# score (P3) -- the composite is a summary, never a substitute.
+#
+# Feasibility margin is dominant by design. Pace ratio is deliberately NOT a
+# term at all (D6): a goal at 0.7 pace may simply have had an aggressive plan,
+# and pace is not comparable across incommensurable goals (§11).
+#
+# self_assessed_pct is NOT a term (D12). A milestone the user sliders to 80% is
+# not thereby healthy.
+w_feasibility = 0.50
+w_drift = 0.20
+w_deadline = 0.15
+w_recency = 0.15
+# PLACEHOLDER normalization horizons.
+drift_tolerance_sessions = 5
+deadline_horizon_days = 30
+staleness_cap_days = 14
+
+[rebaseline]
+# §25.2/§25.4. "Material drift" is not given a number in vision.md. PLACEHOLDER.
+material_drift_sessions = 2.0
