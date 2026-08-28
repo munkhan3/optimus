@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { IconAsk, IconPlan, IconToday, IconTree, IconWeek, IconWork } from "./Icons";
 
-export type Tab = "today" | "work" | "tree" | "plan" | "review" | "ask";
+export type Tab = "today" | "work" | "tree" | "plan" | "review" | "ask" | "intake";
 
 /** Grouped the way Origin groups: what you do daily, then what you set up. */
 const GROUPS: { label: string; items: { id: Tab; label: string; Icon: typeof IconToday }[] }[] = [
@@ -98,7 +98,11 @@ export function Shell({
               </span>
               <div>
                 <h1 className="text-[15px] font-semibold tracking-tight lg:text-lg">
-                  {tab === "ask" ? "Ask" : (active?.label ?? "Optimus")}
+                  {tab === "intake"
+                ? "Set up"
+                : tab === "ask"
+                  ? "Ask"
+                  : (active?.label ?? "Optimus")}
                 </h1>
                 <div className="text-[11px] text-faint">
                   {new Date().toLocaleDateString(undefined, {

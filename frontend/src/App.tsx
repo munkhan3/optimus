@@ -11,10 +11,14 @@ import { Plan } from "./views/Plan";
 import { Review } from "./views/Review";
 import { Tree } from "./views/Tree";
 import { Assistant } from "./views/Assistant";
+import { Intake } from "./views/Intake";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [tab, setTab] = useState<Tab>("today");
+  // null = not yet known. Distinguishing that from "empty" keeps the
+  // intake screen from flashing before the first response lands.
+  const [hasGoals, setHasGoals] = useState<boolean | null>(null);
   const [trackables, setTrackables] = useState<TrackableView[]>([]);
   const [session, setSession] = useState<WorkSession | null>(null);
   const [plan, setPlan] = useState<PlanItem[]>([]);
@@ -26,12 +30,14 @@ export default function App() {
     if (!authed) return;
     setBusy(true);
     try {
-      const [t, s] = await Promise.all([
+      const [t, s, g] = await Promise.all([
         api.get<TrackableView[]>("/api/trackables"),
         api.get<WorkSession | null>("/api/sessions/open"),
+        api.get<unknown[]>("/api/goals"),
       ]);
       setTrackables(t);
       setSession(s);
+      setHasGoals(g.length > 0);
       setError(null);
 
       // A missing plan is normal (nothing committed yet), not an error.
@@ -58,6 +64,19 @@ export default function App() {
   }, [refresh]);
 
   if (!authed) return <TokenGate onSaved={() => setAuthed(true)} />;
+
+  // §2.1: compilation is the expensive part, and making a new user hand-build
+  // their graph through forms front-loads exactly the work the system exists to
+  // absorb. An empty database opens into the conversation instead.
+  if (hasGoals === false) {
+    return (
+      <Shell tab="intake" setTab={setTab}>
+        <ErrorBoundary label="The intake view">
+          <Intake onApproved={refresh} />
+        </ErrorBoundary>
+      </Shell>
+    );
+  }
 
   return (
     <>
