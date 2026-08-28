@@ -65,7 +65,15 @@ def _expected_output(db: Session, trackable: Trackable | None) -> float | None:
     pace = empirical_pace(
         loader.pooled_sessions(db, trackable.task_type), trackable.prior_pace, config
     )
-    return pace.point
+    if pace.point is None:
+        return None
+    # Round the expectation to something a person can confirm in one tap.
+    # pace_hat is a shrinkage estimate and carries full float precision;
+    # prefilling "21.666666666666668 pages" makes confirming it absurd, which
+    # defeats the one-tap budget in §23.2. Rounding here rather than in the UI
+    # keeps the stored expectation and the displayed one identical, so
+    # calibration (actual/expected) measures what the user was actually shown.
+    return round(pace.point, 1)
 
 
 @router.get("/open")
