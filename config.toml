@@ -1,0 +1,83 @@
+# Goal OS configuration.
+#
+# Every hand-set constant in vision.md lives here (§27). Nothing in goalos/metrics/
+# may hardcode a number that belongs in this file.
+#
+# Values marked PLACEHOLDER are guesses that vision.md explicitly expects to be
+# replaced by measured values once data exists. Do not treat them as tuned.
+
+[session]
+# §36.1, resolved: fixed-length sessions. Pace is units-per-session and pools
+# cleanly by task_type with no normalization. Longer work = consecutive sessions.
+minutes = 25
+
+[pace]
+# §24.3 shrinkage estimator: pace_hat = (kappa*prior + n*mean) / (kappa + n)
+kappa = 5.0
+# n at or above which the displayed interval is the observed IQR rather than the
+# provisional wide band. Also gates rebaselining (§25.4).
+min_sessions_for_iqr = 5
+# PLACEHOLDER §24.3: the "fixed wide band" used before min_sessions_for_iqr is
+# reached, as multipliers on pace_hat. Labelled provisional in the UI.
+provisional_band_low = 0.5
+provisional_band_high = 2.0
+
+[calibration]
+# §24.5 rolling median of actual/expected, per task_type.
+rolling_window_sessions = 20
+# PLACEHOLDER D13: retroactive sessions hold a remembered number, often anchored
+# to the prediction. Applies to CALIBRATION ONLY -- full weight in 24.1 and 24.3.
+# Set empirically once timed vs. retroactive distributions diverge.
+retroactive_weight = 0.5
+
+[stall]
+# §24.9, exploratory work only. PLACEHOLDER -- vision.md §36.4 flags this as a
+# guess that may fire on genuinely hard debugging stretches. Watch the
+# false-positive rate before trusting it.
+threshold_sessions = 4
+movement_pct = 5.0
+
+[planning]
+# §25.1 weekly ranking weights. Pace deficit is deliberately absent (D6);
+# feasibility pressure replaces it.
+w_feasibility = 0.30
+w_urgency = 0.20
+w_stakes = 0.20
+w_unblocking = 0.10
+w_neglect = 0.10
+w_effort = 0.10
+
+# Normalization horizons for the score terms above. All terms map to [0, 1].
+# PLACEHOLDER -- chosen to make the weights meaningful, not measured.
+urgency_horizon_days = 30
+neglect_cap_days = 14
+feasibility_pressure_window_sessions = 10
+effort_reference_minutes = 120
+stakes_min = 1
+stakes_max = 5
+
+[redistribution]
+# §25.5 / D9. Shortfall spreads across remaining days and never dumps on tomorrow.
+# If the cap binds, the week does not fit -- that is a rebaseline signal, not a
+# heroic day.
+catch_up_cap = 1.25
+
+[tiers]
+# §25.5, presentation only, derived from weekly score plus deadline flags.
+# A = deadline risk | B = above threshold, no risk | C = under N minutes | D = rest
+short_task_minutes = 15
+tier_b_score_threshold = 0.40
+
+[interview]
+# §22.2 / §15.3: rank gaps by stakes x uncertainty, ask in priority order, and
+# STOP when marginal priority drops below this. Do not walk the full list.
+# PLACEHOLDER.
+min_priority_to_ask = 1.5
+max_questions_per_session = 7
+
+[llm]
+# vision.md §26 pins claude-sonnet-4-6, which is stale.
+model = "claude-sonnet-5"
+max_tokens = 8192
+# Ingestion returns strict JSON; retry on malformed output (§26).
+ingest_max_retries = 2

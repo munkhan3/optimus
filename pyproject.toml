@@ -1,0 +1,38 @@
+[project]
+name = "goalos"
+version = "0.1.0"
+description = "Goal OS -- a personal operating system that compiles intent into today's actions."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlmodel>=0.0.22",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.6",
+    "anthropic>=0.40",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["goalos"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Acceptance tests are the definition of done for v0 (§29). None may be skipped.
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"

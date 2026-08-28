@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Goal OS additions ---
+# Frontend
+node_modules/
+frontend/dist/
+
+# macOS
+.DS_Store
+
+# Local secrets. The single-user bearer token must never be committed (§19).
+.env.local
