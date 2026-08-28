@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from optimus.api.llm.tools import TOOL_SCHEMAS, dispatch
+from optimus.api.llm.tools import TOOL_DECLARATIONS, dispatch
 from tests.db_fixtures import log_session
 
 
@@ -42,7 +42,7 @@ def test_v0_exposes_no_write_tools(client: TestClient):
 
 def test_the_nine_documented_tools_are_all_present(client: TestClient):
     """§26's table, exactly."""
-    names = {t["name"] for t in TOOL_SCHEMAS}
+    names = {t.name for t in TOOL_DECLARATIONS}
     assert names == {
         "get_goal_state", "get_pace", "get_feasibility", "get_plan",
         "get_sessions", "get_budget_status", "get_baselines",
@@ -157,7 +157,7 @@ def test_the_assistant_fails_closed_without_a_key(client: TestClient, monkeypatc
 
     llm_client.get_client.cache_clear()
     settings.get_settings.cache_clear()
-    monkeypatch.setenv("OPTIMUS_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("OPTIMUS_GEMINI_API_KEY", "")
 
     r = client.post("/api/assistant", json={"question": "how am I doing?"})
     assert r.status_code == 503

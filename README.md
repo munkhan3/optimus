@@ -49,8 +49,12 @@ cd frontend && npm install && npm run dev     # dev server, proxies /api
 cd frontend && npm run build                  # or build once; FastAPI serves dist/
 ```
 
-The assistant and ingestion need `OPTIMUS_ANTHROPIC_API_KEY` in `.env.local`. Without
-it those two endpoints return 503 rather than degrading silently.
+The assistant and intake interview need `OPTIMUS_GEMINI_API_KEY` in `.env.local`
+([get one free](https://aistudio.google.com/apikey)). Without it those endpoints
+return 503 rather than degrading silently.
+
+Note: on Gemini's **free** tier Google uses prompts and responses to improve their
+products. Enabling billing on the same key stops that and needs no code change.
 
 ## Tests
 
@@ -85,7 +89,7 @@ database and free of hidden reads.
 fly launch --no-deploy
 fly postgres create && fly postgres attach <name>
 fly secrets set OPTIMUS_AUTH_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
-fly secrets set OPTIMUS_ANTHROPIC_API_KEY=sk-ant-...
+fly secrets set OPTIMUS_GEMINI_API_KEY=...
 fly deploy
 ```
 
@@ -100,5 +104,6 @@ v0 (`vision.md` Part III) is implemented: goal graph, session logging, the metri
 engine, weekly ranking, rebaselining with permanent baseline history, daily
 redistribution, and the read-only assistant.
 
-Not yet exercised against the live Anthropic API — the ingestion and chat endpoints
-are written and unit-tested around the model call, but the call itself needs a key.
+The intake interview, the goal tree, and the read-only assistant are built. The
+model call itself is unverified until a Gemini key is set; everything around it —
+the interview state machine, the transactional write, and the tree — is tested.

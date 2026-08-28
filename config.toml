@@ -76,9 +76,10 @@ min_priority_to_ask = 1.5
 max_questions_per_session = 7
 
 [llm]
-# §26 pins claude-sonnet-4-6, which is stale. The spec deliberately chose the
-# Sonnet tier, so this is its current equivalent rather than an upgrade to Opus.
-model = "claude-sonnet-5"
+# §26 pins claude-sonnet-4-6. Provider switched to Gemini so the intake
+# interview is testable on a free tier; the spec's intent was a fast, capable
+# mid-tier model, which this is.
+model = "gemini-2.5-flash"
 # Ingestion is one bounded pass over a brain dump; the assistant may run longer.
 max_tokens = 16000
 # §26 asks for a re-prompt on malformed output. Structured outputs make that

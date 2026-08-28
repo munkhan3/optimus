@@ -17,7 +17,7 @@ from ..db import get_session
 from ..llm import assistant as assistant_llm
 from ..llm import ingest as ingest_llm
 from ..llm.client import LLMUnavailable
-from ..llm.tools import TOOL_SCHEMAS
+from ..llm.tools import TOOL_DECLARATIONS
 
 router = APIRouter(prefix="/api", tags=["assistant"])
 
@@ -70,7 +70,7 @@ def list_tools() -> dict:
     """What the assistant can see. Useful for confirming it cannot write."""
     return {
         "tools": [
-            {"name": t["name"], "description": t["description"]} for t in TOOL_SCHEMAS
+            {"name": t.name, "description": t.description} for t in TOOL_DECLARATIONS
         ],
         "write_tools": [],
         "note": "v0 has no write tools by design (D10). The model never owns state.",

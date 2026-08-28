@@ -46,7 +46,7 @@ def status() -> dict:
     key surfaces as an explanation and a link to the manual forms rather than a
     503 in the middle of a sentence.
     """
-    return {"available": bool(get_settings().anthropic_api_key)}
+    return {"available": bool(get_settings().gemini_api_key)}
 
 
 @router.post("/turn")

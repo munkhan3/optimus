@@ -68,7 +68,7 @@ def test_turn_returns_503_without_a_key(client: TestClient, monkeypatch):
 
     settings.get_settings.cache_clear()
     llm_client.get_client.cache_clear()
-    monkeypatch.setenv("OPTIMUS_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("OPTIMUS_GEMINI_API_KEY", "")
 
     r = client.post("/api/intake/turn", json={"message": "hello"})
     assert r.status_code == 503

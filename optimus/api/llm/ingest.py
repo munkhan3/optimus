@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 from typing import Literal
 
+from google.genai import types
 from pydantic import BaseModel, Field
 
 from ..settings import get_raw_config
@@ -195,9 +196,10 @@ open than to fill it with something plausible."""
 def parse_brain_dump(text: str, today: str) -> IngestProposal:
     """§22.1-22.2. Returns a proposal; persists nothing.
 
-    Uses structured outputs so the response is schema-valid by construction --
-    §26 asks for defensive parsing with a re-prompt, which was the right advice
-    before the API could guarantee the shape.
+    Uses Gemini's structured output so the response is schema-valid by
+    construction -- §26 asks for defensive parsing with a re-prompt, which was
+    the right advice before the API could guarantee the shape. The retry
+    remains as a backstop for transport failures.
     """
     client = get_client()
     config = get_raw_config().get("llm", {})
@@ -206,27 +208,24 @@ def parse_brain_dump(text: str, today: str) -> IngestProposal:
     last_error: Exception | None = None
     for _attempt in range(retries + 1):
         try:
-            response = client.messages.parse(
+            response = client.models.generate_content(
                 model=model(),
-                max_tokens=max_tokens(),
-                system=SYSTEM,
-                thinking={"type": "adaptive"},
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Today is {today}.\n\n"
-                            "Here is my brain dump. Extract goals, milestones, "
-                            "trackables, and the questions you need answered.\n\n"
-                            f"---\n{text}\n---"
-                        ),
-                    }
-                ],
-                output_config={"format": IngestProposal},
+                contents=(
+                    f"Today is {today}.\n\n"
+                    "Here is my brain dump. Extract goals, milestones, trackables, "
+                    f"and the questions you need answered.\n\n---\n{text}\n---"
+                ),
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM,
+                    max_output_tokens=max_tokens(),
+                    response_mime_type="application/json",
+                    response_schema=IngestProposal,
+                ),
             )
-            if response.parsed_output is None:
+            parsed = response.parsed
+            if parsed is None:
                 raise ValueError("model returned no parsed output")
-            return response.parsed_output
+            return parsed
         except Exception as exc:  # noqa: BLE001 -- retried, then re-raised
             last_error = exc
 

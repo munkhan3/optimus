@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import json
 
+from google.genai import types
 from pydantic import BaseModel, Field
 
-from .client import get_client, max_tokens, model
+from .client import get_client, max_tokens, model, to_contents
 from .ingest import SYSTEM as INGEST_RULES
 from .ingest import IngestProposal
 
@@ -123,8 +124,8 @@ def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> I
 
     system = f"Today is {today}.\n\n{INTERVIEW_RULES}"
     if current is not None:
-        # The proposal goes in the system prompt rather than the transcript: it
-        # is state, not something the user said, and keeping it out of the
+        # The proposal goes in the system instruction rather than the transcript:
+        # it is state, not something the user said, and keeping it out of the
         # message history stops it being re-read as conversation.
         system += (
             "\n\nThe proposal so far, which you must carry forward and modify "
@@ -132,14 +133,16 @@ def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> I
             f"{json.dumps(current.model_dump(), indent=2)}"
         )
 
-    response = client.messages.parse(
+    response = client.models.generate_content(
         model=model(),
-        max_tokens=max_tokens(),
-        system=system,
-        thinking={"type": "adaptive"},
-        messages=messages,
-        output_config={"format": InterviewTurn},
+        contents=to_contents(messages),
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=max_tokens(),
+            response_mime_type="application/json",
+            response_schema=InterviewTurn,
+        ),
     )
-    if response.parsed_output is None:
+    if response.parsed is None:
         raise RuntimeError("the model returned no parsed turn")
-    return response.parsed_output
+    return response.parsed

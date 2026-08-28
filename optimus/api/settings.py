@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # the environment. Empty means "refuse every request" rather than "allow".
     auth_token: str = ""
 
-    anthropic_api_key: str = ""
+    # Gemini. The free tier is enough to run the intake interview; enabling
+    # billing on the same key removes Google's training rights and needs no
+    # code change.
+    gemini_api_key: str = ""
 
     @property
     def config_path(self) -> Path:

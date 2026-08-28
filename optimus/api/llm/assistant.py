@@ -16,11 +16,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from google.genai import types
 from sqlmodel import Session
 
 from ..settings import get_raw_config
-from .client import get_client, max_tokens, model
-from .tools import TOOL_SCHEMAS, dispatch
+from .client import get_client, max_tokens, model, to_contents
+from .tools import TOOL_DECLARATIONS, dispatch
 
 SYSTEM = """\
 You are the assistant inside Optimus, a personal planning system with one user.
@@ -65,67 +66,66 @@ How to be useful here:
 Be concise and concrete. Cite the actual numbers."""
 
 
-def _blocks_to_text(content: list[Any]) -> str:
-    return "\n".join(b.text for b in content if getattr(b, "type", None) == "text").strip()
-
-
 def ask(db: Session, question: str, history: list[dict] | None = None) -> dict:
     """Run one assistant turn, executing read-only tools until it answers.
 
     Returns the answer plus a transcript of which tools ran, so the user can
     check what the answer was actually based on (P3). An assistant whose
     sourcing is invisible is one more thing to take on faith.
+
+    Automatic function calling is disabled deliberately. The handlers need a
+    request-scoped database session, and letting the SDK invoke bare callables
+    would mean either a global session or a hidden one -- both worse than
+    running the loop here where the session's lifetime is obvious.
     """
     client = get_client()
     turn_limit = int(get_raw_config().get("llm", {}).get("assistant_max_turns", 8))
 
-    messages: list[dict[str, Any]] = list(history or [])
-    messages.append({"role": "user", "content": question})
+    contents = to_contents(history or [])
+    contents.append(types.Content(role="user", parts=[types.Part(text=question)]))
 
     tool_calls: list[dict[str, Any]] = []
 
     for _turn in range(turn_limit):
-        response = client.messages.create(
+        response = client.models.generate_content(
             model=model(),
-            max_tokens=max_tokens(),
-            system=SYSTEM,
-            thinking={"type": "adaptive"},
-            tools=TOOL_SCHEMAS,
-            messages=messages,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM,
+                max_output_tokens=max_tokens(),
+                tools=[types.Tool(function_declarations=TOOL_DECLARATIONS)],
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            ),
         )
 
-        if response.stop_reason == "refusal":
+        candidate = response.candidates[0] if response.candidates else None
+        parts = list(candidate.content.parts) if candidate and candidate.content else []
+        calls = [p.function_call for p in parts if getattr(p, "function_call", None)]
+
+        if not calls:
             return {
-                "answer": "The request was declined by a safety classifier.",
-                "stop_reason": "refusal",
+                "answer": _text_of(parts),
+                "stop_reason": str(candidate.finish_reason) if candidate else "unknown",
                 "tool_calls": tool_calls,
+                "history": _serializable(contents),
             }
 
-        messages.append({"role": "assistant", "content": response.content})
+        contents.append(types.Content(role="model", parts=parts))
 
-        if response.stop_reason != "tool_use":
-            return {
-                "answer": _blocks_to_text(response.content),
-                "stop_reason": response.stop_reason,
-                "tool_calls": tool_calls,
-                "history": _serializable(messages),
-            }
-
-        # Execute every requested tool and return all results in ONE user
-        # message -- splitting them trains the model out of parallel calls.
+        # Execute every requested call and return all results in ONE turn --
+        # splitting them trains the model out of calling tools in parallel.
         results = []
-        for block in response.content:
-            if getattr(block, "type", None) != "tool_use":
-                continue
-            output = dispatch(db, block.name, dict(block.input))
-            tool_calls.append({"name": block.name, "input": dict(block.input)})
-            results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": json.dumps(output, default=str),
-                "is_error": isinstance(output, dict) and "error" in output,
-            })
-        messages.append({"role": "user", "content": results})
+        for call in calls:
+            args = dict(call.args or {})
+            output = dispatch(db, call.name, args)
+            tool_calls.append({"name": call.name, "input": args})
+            results.append(
+                types.Part.from_function_response(
+                    name=call.name,
+                    response={"result": json.loads(json.dumps(output, default=str))},
+                )
+            )
+        contents.append(types.Content(role="user", parts=results))
 
     return {
         "answer": (
@@ -137,18 +137,18 @@ def ask(db: Session, question: str, history: list[dict] | None = None) -> dict:
     }
 
 
-def _serializable(messages: list[dict]) -> list[dict]:
-    """Strip SDK objects so the history can round-trip through JSON."""
-    out = []
-    for message in messages:
-        content = message["content"]
-        if isinstance(content, str) or isinstance(content, list) and all(isinstance(c, dict) for c in content):
-            out.append({"role": message["role"], "content": content})
-        else:
+def _text_of(parts: list) -> str:
+    return "\n".join(p.text for p in parts if getattr(p, "text", None)).strip()
+
+
+def _serializable(contents: list) -> list[dict]:
+    """Back to the wire format, which stays provider-neutral."""
+    out: list[dict] = []
+    for content in contents:
+        text = _text_of(list(content.parts or []))
+        if text:
             out.append({
-                "role": message["role"],
-                "content": [
-                    b.model_dump() if hasattr(b, "model_dump") else b for b in content
-                ],
+                "role": "assistant" if content.role == "model" else "user",
+                "content": text,
             })
     return out

@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from google.genai import types
 from sqlmodel import Session, select
 
 from optimus.metrics.stall import detect_stall
@@ -36,127 +37,95 @@ from ..repo import loader, metrics_service
 from ..repo.loader import week_start
 from ..settings import get_metrics_config
 
-# Tool schemas, in §26's order. `strict` guarantees the arguments validate.
-TOOL_SCHEMAS: list[dict[str, Any]] = [
-    {
-        "name": "get_goal_state",
-        "description": "The goal hierarchy with current metrics. Omit goal_id for all goals.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"goal_id": {"type": ["integer", "null"]}},
-            "required": ["goal_id"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_pace",
-        "description": (
+# Tool declarations in §26's order.
+#
+# Gemini takes an OpenAPI subset rather than raw JSON Schema, so an optional
+# argument is `nullable=True` rather than a `["integer", "null"]` union. Writing
+# them as types.Schema keeps the SDK validating the shape instead of the model
+# discovering it at call time.
+
+def _int(desc: str = "", *, optional: bool = False) -> types.Schema:
+    return types.Schema(type=types.Type.INTEGER, description=desc, nullable=optional)
+
+
+def _str(desc: str = "", *, optional: bool = False) -> types.Schema:
+    return types.Schema(type=types.Type.STRING, description=desc, nullable=optional)
+
+
+def _obj(props: dict[str, types.Schema], required: list[str]) -> types.Schema:
+    return types.Schema(type=types.Type.OBJECT, properties=props, required=required)
+
+
+TOOL_DECLARATIONS: list[types.FunctionDeclaration] = [
+    types.FunctionDeclaration(
+        name="get_goal_state",
+        description="The goal hierarchy with current metrics. Omit goal_id for all goals.",
+        parameters=_obj({"goal_id": _int("A specific goal, or omit for all", optional=True)}, []),
+    ),
+    types.FunctionDeclaration(
+        name="get_pace",
+        description=(
             "pace_hat, its displayed interval, required pace, drift, and the "
             "projected completion range for one trackable."
         ),
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"trackable_id": {"type": "integer"}},
-            "required": ["trackable_id"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_feasibility",
-        "description": (
+        parameters=_obj({"trackable_id": _int()}, ["trackable_id"]),
+    ),
+    types.FunctionDeclaration(
+        name="get_feasibility",
+        description=(
             "Feasibility margin, sessions available before the deadline, and the "
             "infeasible flag for every trackable under a goal."
         ),
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"goal_id": {"type": "integer"}},
-            "required": ["goal_id"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_plan",
-        "description": "The plan for a date, with each item's full score breakdown.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"plan_date": {"type": "string", "description": "ISO date"}},
-            "required": ["plan_date"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_sessions",
-        "description": "Session history, optionally filtered by trackable and start date.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "since": {"type": ["string", "null"], "description": "ISO date"},
-                "trackable_id": {"type": ["integer", "null"]},
-                "limit": {"type": ["integer", "null"]},
+        parameters=_obj({"goal_id": _int()}, ["goal_id"]),
+    ),
+    types.FunctionDeclaration(
+        name="get_plan",
+        description="The plan for a date, with each item's full score breakdown.",
+        parameters=_obj({"plan_date": _str("ISO date")}, ["plan_date"]),
+    ),
+    types.FunctionDeclaration(
+        name="get_sessions",
+        description="Session history, optionally filtered by trackable and start date.",
+        parameters=_obj(
+            {
+                "since": _str("ISO date", optional=True),
+                "trackable_id": _int(optional=True),
+                "limit": _int(optional=True),
             },
-            "required": ["since", "trackable_id", "limit"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_budget_status",
-        "description": "Committed vs consumed sessions per goal for a week.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "week_start": {"type": ["string", "null"], "description": "ISO date (Monday)"}
-            },
-            "required": ["week_start"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_baselines",
-        "description": (
+            [],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_budget_status",
+        description="Committed vs consumed sessions per goal for a week.",
+        parameters=_obj({"week_start": _str("ISO date (Monday)", optional=True)}, []),
+    ),
+    types.FunctionDeclaration(
+        name="get_baselines",
+        description=(
             "Full rebaseline history for a trackable, including version 1 and the "
             "recorded resolution and rationale for each change."
         ),
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"trackable_id": {"type": "integer"}},
-            "required": ["trackable_id"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_progress_history",
-        "description": (
+        parameters=_obj({"trackable_id": _int()}, ["trackable_id"]),
+    ),
+    types.FunctionDeclaration(
+        name="get_progress_history",
+        description=(
             "The self-assessed progress series for a milestone plus its stall flag. "
             "This series is a review signal only -- it is not an input to any "
             "computed metric."
         ),
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"milestone_id": {"type": "integer"}},
-            "required": ["milestone_id"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "get_open_gaps",
-        "description": "Unanswered interview questions, highest priority first.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-    },
+        parameters=_obj({"milestone_id": _int()}, ["milestone_id"]),
+    ),
+    types.FunctionDeclaration(
+        name="get_open_gaps",
+        description="Unanswered interview questions, highest priority first.",
+        parameters=_obj({}, []),
+    ),
 ]
+
+# Kept as the public name so callers and tests do not care about the provider.
+TOOL_SCHEMAS = TOOL_DECLARATIONS
 
 
 def _today() -> date:
@@ -434,6 +403,6 @@ _HANDLERS = {
     "get_open_gaps": _get_open_gaps,
 }
 
-assert {t["name"] for t in TOOL_SCHEMAS} == set(_HANDLERS), (
+assert {t.name for t in TOOL_DECLARATIONS} == set(_HANDLERS), (
     "every declared tool needs a handler and vice versa"
 )
