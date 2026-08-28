@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { IconAsk, IconPlan, IconToday, IconWeek, IconWork } from "./Icons";
+import { IconAsk, IconPlan, IconToday, IconTree, IconWeek, IconWork } from "./Icons";
 
-export type Tab = "today" | "work" | "plan" | "review" | "ask";
+export type Tab = "today" | "work" | "tree" | "plan" | "review" | "ask";
 
 /** Grouped the way Origin groups: what you do daily, then what you set up. */
 const GROUPS: { label: string; items: { id: Tab; label: string; Icon: typeof IconToday }[] }[] = [
@@ -10,6 +10,7 @@ const GROUPS: { label: string; items: { id: Tab; label: string; Icon: typeof Ico
     items: [
       { id: "today", label: "Today", Icon: IconToday },
       { id: "work", label: "Work", Icon: IconWork },
+      { id: "tree", label: "Tree", Icon: IconTree },
       { id: "review", label: "Week", Icon: IconWeek },
     ],
   },

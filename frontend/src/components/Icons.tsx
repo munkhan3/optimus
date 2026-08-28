@@ -59,3 +59,12 @@ export const IconTimer = (p: P) => (
     <path d="M12 9v4l2.5 1.5M9 2h6" />
   </Svg>
 );
+
+export const IconTree = (p: P) => (
+  <Svg {...p}>
+    <circle cx="5" cy="12" r="2" />
+    <circle cx="18" cy="6" r="2" />
+    <circle cx="18" cy="18" r="2" />
+    <path d="M7 12h4a2 2 0 0 0 2-2V8a2 2 0 0 1 2-2h1M7 12h4a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1" />
+  </Svg>
+);

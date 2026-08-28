@@ -4,10 +4,12 @@ import type { PlanItem, TrackableView, WorkSession } from "./lib/types";
 import { SessionBar } from "./components/SessionBar";
 import { Button, Card, Field } from "./components/Primitives";
 import { Shell, type Tab } from "./components/Shell";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Trackables } from "./views/Trackables";
 import { Today } from "./views/Today";
 import { Plan } from "./views/Plan";
 import { Review } from "./views/Review";
+import { Tree } from "./views/Tree";
 import { Assistant } from "./views/Assistant";
 
 export default function App() {
@@ -64,22 +66,25 @@ export default function App() {
           <div className="mb-4 rounded-xl bg-bad/10 px-4 py-3 text-xs text-bad">{error}</div>
         )}
 
-        {tab === "today" && (
-          <Today
-            items={plan}
-            trackables={trackables}
-            capBinding={capBinding}
-            onChanged={refresh}
-            onGenerate={refresh}
-            busy={busy}
-          />
-        )}
-        {tab === "work" && (
-          <Trackables trackables={trackables} onStarted={refresh} busy={busy || !!session} />
-        )}
-        {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
-        {tab === "review" && <Review />}
-        {tab === "ask" && <Assistant />}
+        <ErrorBoundary key={tab} label={`The ${tab} view`}>
+          {tab === "today" && (
+            <Today
+              items={plan}
+              trackables={trackables}
+              capBinding={capBinding}
+              onChanged={refresh}
+              onGenerate={refresh}
+              busy={busy}
+            />
+          )}
+          {tab === "work" && (
+            <Trackables trackables={trackables} onStarted={refresh} busy={busy || !!session} />
+          )}
+          {tab === "tree" && <Tree />}
+          {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
+          {tab === "review" && <Review />}
+          {tab === "ask" && <Assistant />}
+        </ErrorBoundary>
       </Shell>
 
       {session && (
