@@ -1,8 +1,8 @@
 """v0 schema
 
-Revision ID: 7cee8255ae1c
+Revision ID: 360c008eccc3
 Revises: 
-Create Date: 2026-08-28 00:28:39.768793
+Create Date: 2026-08-28 00:35:17.615527
 """
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel
-from sqlalchemy.dialects import postgresql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 from goalos.api.db import COMPLETED_UNITS_TRIGGER, DROP_COMPLETED_UNITS_TRIGGER
 
-revision: str = '7cee8255ae1c'
+revision: str = '360c008eccc3'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -34,10 +34,10 @@ def upgrade() -> None:
     op.create_table('daily_plan',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('plan_date', sa.Date(), nullable=False),
-    sa.Column('generated_at', sa.DateTime(), nullable=False),
+    sa.Column('generated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('capacity_minutes', sa.Integer(), nullable=False),
     sa.Column('carried_shortfall', sa.Float(), nullable=True),
-    sa.Column('accepted_at', sa.DateTime(), nullable=True),
+    sa.Column('accepted_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_daily_plan_plan_date'), 'daily_plan', ['plan_date'], unique=True)
@@ -56,7 +56,7 @@ def upgrade() -> None:
     sa.Column('stakes', sa.Integer(), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('verified', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("activation IN ('active', 'parked')", name='goal_activation_valid'),
     sa.CheckConstraint("dod_source IN ('user_supplied', 'model_estimated')", name='goal_dod_source_valid'),
     sa.CheckConstraint("kind = 'vision' OR activation <> 'active' OR deadline IS NOT NULL", name='goal_active_requires_deadline'),
@@ -95,7 +95,7 @@ def upgrade() -> None:
     sa.Column('verified', sa.Boolean(), nullable=False),
     sa.Column('planned_sessions', sa.Integer(), nullable=True),
     sa.Column('exploratory', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("dod_source IN ('user_supplied', 'model_estimated')", name='milestone_dod_source_valid'),
     sa.CheckConstraint("status IN ('not_started', 'in_progress', 'done', 'abandoned')", name='milestone_status_valid'),
     sa.CheckConstraint('blocked_by IS NULL OR blocked_by <> id', name='milestone_no_self_block'),
@@ -118,7 +118,7 @@ def upgrade() -> None:
     sa.Column('task_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('exploratory', sa.Boolean(), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("status IN ('not_started', 'in_progress', 'done', 'abandoned')", name='trackable_status_valid'),
     sa.CheckConstraint("task_type IN ('reading', 'problems', 'writing', 'exploratory', 'admin')", name='trackable_task_type_valid'),
     sa.CheckConstraint("total_units_source IN ('grounded', 'user_supplied', 'model_estimated')", name='trackable_units_source_valid'),
@@ -138,7 +138,7 @@ def upgrade() -> None:
     sa.Column('target_date', sa.Date(), nullable=False),
     sa.Column('resolution', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('rationale', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("resolution IS NULL OR resolution IN ('add_sessions', 'cut_scope', 'move_deadline', 'declare_infeasible')", name='baseline_resolution_valid'),
     sa.CheckConstraint('(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)', name='baseline_exactly_one_target'),
     sa.CheckConstraint('version = 1 OR (resolution IS NOT NULL AND rationale IS NOT NULL)', name='baseline_rebaseline_requires_reason'),
@@ -160,7 +160,7 @@ def upgrade() -> None:
     sa.Column('priority', sa.Float(), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('answer', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("status IN ('open', 'answered', 'dismissed')", name='open_gap_status_valid'),
     sa.CheckConstraint('goal_id IS NOT NULL OR milestone_id IS NOT NULL OR trackable_id IS NOT NULL', name='open_gap_has_a_subject'),
     sa.ForeignKeyConstraint(['goal_id'], ['goal.id'], ),
@@ -182,7 +182,7 @@ def upgrade() -> None:
     sa.Column('deadline', sa.Date(), nullable=True),
     sa.Column('blocked_by', sa.Integer(), nullable=True),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("status IN ('open', 'done', 'deferred', 'dropped')", name='task_status_valid'),
     sa.CheckConstraint('blocked_by IS NULL OR blocked_by <> id', name='task_no_self_block'),
     sa.ForeignKeyConstraint(['blocked_by'], ['task.id'], ),
@@ -199,7 +199,7 @@ def upgrade() -> None:
     sa.Column('milestone_id', sa.Integer(), nullable=True),
     sa.Column('committed_sessions', sa.Integer(), nullable=False),
     sa.Column('target_units', sa.Float(), nullable=True),
-    sa.Column('committed_at', sa.DateTime(), nullable=False),
+    sa.Column('committed_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint('(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)', name='weekly_commitment_exactly_one_target'),
     sa.CheckConstraint('committed_sessions >= 0', name='weekly_commitment_non_negative'),
     sa.ForeignKeyConstraint(['capacity_id'], ['capacity.id'], ),
@@ -240,8 +240,8 @@ def upgrade() -> None:
     sa.Column('trackable_id', sa.Integer(), nullable=True),
     sa.Column('milestone_id', sa.Integer(), nullable=True),
     sa.Column('task_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('started_at', sa.DateTime(), nullable=False),
-    sa.Column('ended_at', sa.DateTime(), nullable=True),
+    sa.Column('started_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('ended_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('planned_minutes', sa.Integer(), nullable=False),
     sa.Column('actual_minutes', sa.Float(), nullable=True),
     sa.Column('expected_output', sa.Float(), nullable=True),
@@ -269,7 +269,7 @@ def upgrade() -> None:
     sa.Column('self_assessed_pct', sa.Float(), nullable=False),
     sa.Column('session_id', sa.Integer(), nullable=True),
     sa.Column('note', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('recorded_at', sa.DateTime(), nullable=False),
+    sa.Column('recorded_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint('(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)', name='progress_check_exactly_one_target'),
     sa.CheckConstraint('self_assessed_pct >= 0 AND self_assessed_pct <= 100', name='progress_check_pct_range'),
     sa.ForeignKeyConstraint(['milestone_id'], ['milestone.id'], ),
@@ -282,9 +282,9 @@ def upgrade() -> None:
     # ### end Alembic commands ###
 
 
-    # trackable.completed_units is a cache of SUM(actual_output) (§21). A trigger
-    # keeps it correct no matter which write path touches a session, so AC7's
-    # invariant cannot be broken by forgetting to recompute in application code.
+    # trackable.completed_units caches SUM(actual_output) (§21). A trigger keeps
+    # it correct no matter which write path touches a session, so AC7's invariant
+    # cannot be broken by application code forgetting to recompute.
     op.execute(COMPLETED_UNITS_TRIGGER)
 
 

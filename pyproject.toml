@@ -36,3 +36,7 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.ruff.lint.flake8-bugbear]
+# Depends() in an argument default is the FastAPI idiom, not a mutable default.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]

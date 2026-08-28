@@ -37,6 +37,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     Column,
+    DateTime,
     Index,
     UniqueConstraint,
     text,
@@ -70,6 +71,12 @@ def _utcnow() -> datetime:
     from datetime import UTC
 
     return datetime.now(UTC)
+
+
+# §21: "Timestamps UTC, ISO 8601". Postgres TIMESTAMP WITHOUT TIME ZONE would
+# hand back naive datetimes that silently compare wrong against the aware ones
+# the application creates, so every timestamp column is timestamptz.
+TZ = DateTime(timezone=True)
 
 
 # ---------------------------------------------------------------------- goal
@@ -119,7 +126,7 @@ class Goal(SQLModel, table=True):
     stakes: int = 3
     status: str = "not_started"
     verified: bool = False
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 class Milestone(SQLModel, table=True):
@@ -147,7 +154,7 @@ class Milestone(SQLModel, table=True):
     # system can do, so this is how such milestones stay first-class.
     planned_sessions: int | None = None
     exploratory: bool = False
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 class Trackable(SQLModel, table=True):
@@ -176,7 +183,7 @@ class Trackable(SQLModel, table=True):
     task_type: str
     exploratory: bool = False
     status: str = "not_started"
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 class Task(SQLModel, table=True):
@@ -196,7 +203,7 @@ class Task(SQLModel, table=True):
     deadline: date | None = None
     blocked_by: int | None = Field(default=None, foreign_key="task.id")
     status: str = "open"
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 # ------------------------------------------------------------------ capacity
@@ -256,7 +263,7 @@ class WeeklyCommitment(SQLModel, table=True):
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
     committed_sessions: int
     target_units: float | None = None
-    committed_at: datetime = Field(default_factory=_utcnow)
+    committed_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 # ------------------------------------------------------------------ sessions
@@ -282,8 +289,8 @@ class WorkSession(SQLModel, table=True):
     # FIX 4: denormalized so pace pooling is a single-table read and history
     # survives a trackable being reclassified.
     task_type: str
-    started_at: datetime
-    ended_at: datetime | None = None
+    started_at: datetime = Field(sa_type=TZ)
+    ended_at: datetime | None = Field(default=None, sa_type=TZ)
     planned_minutes: int = 25
     actual_minutes: float | None = None
     expected_output: float | None = None
@@ -316,7 +323,7 @@ class ProgressCheckRow(SQLModel, table=True):
     self_assessed_pct: float
     session_id: int | None = Field(default=None, foreign_key="work_session.id")
     note: str | None = None
-    recorded_at: datetime = Field(default_factory=_utcnow)
+    recorded_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 class Baseline(SQLModel, table=True):
@@ -364,7 +371,7 @@ class Baseline(SQLModel, table=True):
     target_date: date
     resolution: str | None = None
     rationale: str | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 class OpenGap(SQLModel, table=True):
@@ -389,7 +396,7 @@ class OpenGap(SQLModel, table=True):
     priority: float                    # stakes x uncertainty (§15.3)
     status: str = "open"
     answer: str | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 # --------------------------------------------------------------------- plans
@@ -400,10 +407,10 @@ class DailyPlan(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     plan_date: date = Field(unique=True, index=True)
-    generated_at: datetime = Field(default_factory=_utcnow)
+    generated_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
     capacity_minutes: int
     carried_shortfall: float | None = None  # spread, never dumped (D9)
-    accepted_at: datetime | None = None
+    accepted_at: datetime | None = Field(default=None, sa_type=TZ)
 
 
 class PlanItem(SQLModel, table=True):
