@@ -1,8 +1,8 @@
 """v0 schema
 
-Revision ID: 360c008eccc3
+Revision ID: df3ac082e4d3
 Revises: 
-Create Date: 2026-08-28 00:35:17.615527
+Create Date: 2026-08-28 00:39:12.553165
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 from goalos.api.db import COMPLETED_UNITS_TRIGGER, DROP_COMPLETED_UNITS_TRIGGER
 
-revision: str = '360c008eccc3'
+revision: str = 'df3ac082e4d3'
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -55,7 +55,7 @@ def upgrade() -> None:
     sa.Column('reset_period_days', sa.Integer(), nullable=True),
     sa.Column('stakes', sa.Integer(), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('verified', sa.Boolean(), nullable=False),
+    sa.Column('verified', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("activation IN ('active', 'parked')", name='goal_activation_valid'),
     sa.CheckConstraint("dod_source IN ('user_supplied', 'model_estimated')", name='goal_dod_source_valid'),
@@ -92,9 +92,9 @@ def upgrade() -> None:
     sa.Column('deadline', sa.Date(), nullable=True),
     sa.Column('blocked_by', sa.Integer(), nullable=True),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('verified', sa.Boolean(), nullable=False),
+    sa.Column('verified', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('planned_sessions', sa.Integer(), nullable=True),
-    sa.Column('exploratory', sa.Boolean(), nullable=False),
+    sa.Column('exploratory', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("dod_source IN ('user_supplied', 'model_estimated')", name='milestone_dod_source_valid'),
     sa.CheckConstraint("status IN ('not_started', 'in_progress', 'done', 'abandoned')", name='milestone_status_valid'),
@@ -112,11 +112,11 @@ def upgrade() -> None:
     sa.Column('unit', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('total_units', sa.Float(), nullable=False),
     sa.Column('total_units_source', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('completed_units', sa.Float(), nullable=False),
+    sa.Column('completed_units', sa.Float(), server_default=sa.text('0'), nullable=False),
     sa.Column('target_date', sa.Date(), nullable=True),
     sa.Column('prior_pace', sa.Float(), nullable=True),
     sa.Column('task_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('exploratory', sa.Boolean(), nullable=False),
+    sa.Column('exploratory', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("status IN ('not_started', 'in_progress', 'done', 'abandoned')", name='trackable_status_valid'),
@@ -222,7 +222,7 @@ def upgrade() -> None:
     sa.Column('allocated_units', sa.Float(), nullable=True),
     sa.Column('rank', sa.Integer(), nullable=False),
     sa.Column('user_action', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('completed', sa.Boolean(), nullable=False),
+    sa.Column('completed', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.CheckConstraint("score_breakdown::text <> '{}'", name='plan_item_breakdown_not_empty'),
     sa.CheckConstraint("tier IN ('A', 'B', 'C', 'D')", name='plan_item_tier_valid'),
     sa.CheckConstraint("user_action IS NULL OR user_action IN ('accepted', 'modified', 'rejected', 'deferred')", name='plan_item_user_action_valid'),
@@ -249,8 +249,8 @@ def upgrade() -> None:
     sa.Column('intent_met', sa.Boolean(), nullable=True),
     sa.Column('focus_rating', sa.Integer(), nullable=True),
     sa.Column('note', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('interrupted', sa.Boolean(), nullable=False),
-    sa.Column('entered_retroactively', sa.Boolean(), nullable=False),
+    sa.Column('interrupted', sa.Boolean(), server_default=sa.text('false'), nullable=False),
+    sa.Column('entered_retroactively', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.CheckConstraint("task_type IN ('reading', 'problems', 'writing', 'exploratory', 'admin')", name='work_session_task_type_valid'),
     sa.CheckConstraint('ended_at IS NULL OR ended_at >= started_at', name='work_session_ends_after_start'),
     sa.CheckConstraint('planned_minutes > 0', name='work_session_planned_minutes_positive'),

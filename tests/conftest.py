@@ -1,4 +1,10 @@
-"""Shared fixtures. Deliberately small -- the metrics engine needs no database."""
+"""Shared fixtures.
+
+The database fixtures live in tests/db_fixtures.py and are registered here as a
+plugin (pytest only permits pytest_plugins in the root conftest). They are
+opt-in rather than autouse, so the pure metrics tests still run with no
+database and no migration -- which is the point of keeping the engine pure.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,9 @@ import pytest
 
 from goalos.metrics.config import MetricsConfig
 from goalos.metrics.types import ProgressCheck, SessionObs
+
+# pytest only permits this in the root conftest.
+pytest_plugins = ["tests.db_fixtures"]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # §21: timestamps are UTC. Aware datetimes here keep the tests honest about

@@ -78,6 +78,13 @@ def _utcnow() -> datetime:
 # the application creates, so every timestamp column is timestamptz.
 TZ = DateTime(timezone=True)
 
+# §21 specifies DEFAULT 0 on these columns. A Python-side default alone would
+# leave the column NULL for any write that does not go through SQLModel, which
+# a NOT NULL column then rejects. Server defaults keep the schema honest on its
+# own terms.
+FALSE_DEFAULT = {"server_default": text("false")}
+ZERO_DEFAULT = {"server_default": text("0")}
+
 
 # ---------------------------------------------------------------------- goal
 
@@ -125,7 +132,7 @@ class Goal(SQLModel, table=True):
 
     stakes: int = 3
     status: str = "not_started"
-    verified: bool = False
+    verified: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
@@ -148,12 +155,12 @@ class Milestone(SQLModel, table=True):
     deadline: date | None = None
     blocked_by: int | None = Field(default=None, foreign_key="milestone.id")
     status: str = "not_started"
-    verified: bool = False
+    verified: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     # §10: work with no natural counter has no trackable and is budgeted in
     # sessions instead. Forcing a number here is the most damaging thing the
     # system can do, so this is how such milestones stay first-class.
     planned_sessions: int | None = None
-    exploratory: bool = False
+    exploratory: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
@@ -177,11 +184,11 @@ class Trackable(SQLModel, table=True):
     total_units_source: str
     # A cache of SUM(actual_output), maintained by a database trigger so it
     # cannot drift from the authoritative value (AC7).
-    completed_units: float = 0.0
+    completed_units: float = Field(default=0.0, sa_column_kwargs=ZERO_DEFAULT)
     target_date: date | None = None
     prior_pace: float | None = None   # the user's own initial units/session estimate
     task_type: str
-    exploratory: bool = False
+    exploratory: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     status: str = "not_started"
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
@@ -298,8 +305,8 @@ class WorkSession(SQLModel, table=True):
     intent_met: bool | None = None      # exploratory sessions, instead of a count
     focus_rating: int | None = None
     note: str | None = None
-    interrupted: bool = False           # excluded from pace, retained
-    entered_retroactively: bool = False  # D13
+    interrupted: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
+    entered_retroactively: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
 
 
 class ProgressCheckRow(SQLModel, table=True):
@@ -443,4 +450,4 @@ class PlanItem(SQLModel, table=True):
     allocated_units: float | None = None
     rank: int
     user_action: str | None = None     # revealed preference -- §32's training signal
-    completed: bool = False
+    completed: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
