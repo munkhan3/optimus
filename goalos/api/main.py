@@ -21,6 +21,7 @@ from .routers import (
     capacity,
     goals,
     planning,
+    reviews,
     sessions,
     trackables,
 )
@@ -43,6 +44,7 @@ for router in (
     capacity.router,
     planning.router,
     assistant.router,
+    reviews.router,
 ):
     app.include_router(router, dependencies=[Depends(require_token)])
 

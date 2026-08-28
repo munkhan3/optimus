@@ -7,13 +7,15 @@ import { Trackables } from "./views/Trackables";
 import { Today } from "./views/Today";
 import { Assistant } from "./views/Assistant";
 import { Plan } from "./views/Plan";
+import { Review } from "./views/Review";
 
-type Tab = "today" | "work" | "plan" | "ask";
+type Tab = "today" | "work" | "plan" | "review" | "ask";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "work", label: "Work" },
   { id: "plan", label: "Plan" },
+  { id: "review", label: "Week" },
   { id: "ask", label: "Ask" },
 ];
 
@@ -83,7 +85,7 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
+                className={`min-h-9 rounded-lg px-2.5 text-xs font-semibold transition ${
                   tab === t.id ? "bg-accent text-white" : "text-muted"
                 }`}
               >
@@ -113,6 +115,7 @@ export default function App() {
           <Trackables trackables={trackables} onStarted={refresh} busy={busy || !!session} />
         )}
         {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
+        {tab === "review" && <Review />}
         {tab === "ask" && <Assistant />}
       </main>
 
