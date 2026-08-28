@@ -98,11 +98,21 @@ class Goal(SQLModel, table=True):
         CheckConstraint(_in("dod_source", DOD_SOURCE), name="goal_dod_source_valid"),
         CheckConstraint(_in("status", NODE_STATUS), name="goal_status_valid"),
         CheckConstraint("stakes BETWEEN 1 AND 5", name="goal_stakes_range"),
-        # D1/D4 and AC1: an active goal needs a deadline -- but a vision is
-        # unbounded by definition and never completes (§9), so it is exempt.
-        # FIX 1 relative to §21.
+        # D1/D4 and AC1: an active goal needs a deadline. Two exemptions, both
+        # because "no deadline column" does not mean "no deadline":
+        #
+        #   A vision is unbounded by definition and never completes (§9).
+        #
+        #   A reset_period commitment has a deadline every period -- §12 is
+        #   explicit that "gym six days a week has a deadline every week" and
+        #   that these are recurring deadlines, "not an exception". Requiring an
+        #   absolute date made the entire recurring category impossible to
+        #   activate. FIX 5 relative to §21.
         CheckConstraint(
-            "kind = 'vision' OR activation <> 'active' OR deadline IS NOT NULL",
+            "kind = 'vision' "
+            "OR activation <> 'active' "
+            "OR deadline IS NOT NULL "
+            "OR (pace_mode = 'reset_period' AND reset_period_days IS NOT NULL)",
             name="goal_active_requires_deadline",
         ),
         CheckConstraint(

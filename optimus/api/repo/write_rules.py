@@ -32,11 +32,21 @@ def check_activation(goal: Goal) -> None:
             "work that cannot be recognized as complete cannot be planned against.",
         )
     # §9: a vision is directional and unbounded, so it never carries a deadline.
-    if goal.kind != "vision" and goal.deadline is None:
+    if goal.kind == "vision":
+        return
+    # §12: a recurring commitment has a deadline every period. "Gym six days a
+    # week" is not an intention, and the window closing weekly IS its deadline --
+    # demanding an absolute date would make the whole recurring category
+    # impossible to activate.
+    if goal.pace_mode == "reset_period" and goal.reset_period_days:
+        return
+    if goal.deadline is None:
         raise HTTPException(
             422,
             "An active goal needs a deadline. A goal with no deadline is not being "
-            "worked on -- it is an intention, and belongs parked.",
+            "worked on -- it is an intention, and belongs parked. (A recurring "
+            "commitment is the exception: set pace_mode to reset_period with a "
+            "period, and the window closing is its deadline.)",
         )
 
 

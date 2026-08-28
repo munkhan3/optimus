@@ -6,6 +6,7 @@ import tomllib
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from optimus.metrics.config import MetricsConfig
@@ -28,7 +29,14 @@ class Settings(BaseSettings):
     # Gemini. The free tier is enough to run the intake interview; enabling
     # billing on the same key removes Google's training rights and needs no
     # code change.
-    gemini_api_key: str = ""
+    #
+    # Accepts the bare GEMINI_API_KEY as well as the prefixed form, because that
+    # is the name Google's own docs and SDK use -- a settings prefix should not
+    # make the conventional name silently do nothing.
+    gemini_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPTIMUS_GEMINI_API_KEY", "GEMINI_API_KEY"),
+    )
 
     @property
     def config_path(self) -> Path:

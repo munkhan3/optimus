@@ -79,7 +79,14 @@ max_questions_per_session = 7
 # §26 pins claude-sonnet-4-6. Provider switched to Gemini so the intake
 # interview is testable on a free tier; the spec's intent was a fast, capable
 # mid-tier model, which this is.
-model = "gemini-2.5-flash"
+# Verified working against the live API. Note gemini-2.5-flash is *listed* by
+# models.list() but 404s on generateContent, so the listing is not proof.
+model = "gemini-3.5-flash"
+# Free-tier congestion is routine: probing five models found three returning
+# 503 simultaneously. The chain is tried in order after retries are exhausted.
+fallback_models = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
+retry_attempts = 3
+retry_base_seconds = 2
 # Ingestion is one bounded pass over a brain dump; the assistant may run longer.
 max_tokens = 16000
 # §26 asks for a re-prompt on malformed output. Structured outputs make that

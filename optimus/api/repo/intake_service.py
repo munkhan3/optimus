@@ -56,7 +56,7 @@ def persist_proposal(db: Session, proposal: IngestProposal) -> dict[str, Any]:
             for p_milestone in p_goal.milestones:
                 milestone = _write_milestone(db, p_milestone, goal, created)
                 for p_trackable in p_milestone.trackables:
-                    _write_trackable(db, p_trackable, milestone, created)
+                    _write_trackable(db, p_trackable, milestone, goal, created)
 
         _write_gaps(db, proposal, created)
         db.commit()
@@ -115,7 +115,7 @@ def _write_milestone(
 
 
 def _write_trackable(
-    db: Session, p: ProposedTrackable, milestone: Milestone, created: dict
+    db: Session, p: ProposedTrackable, milestone: Milestone, goal: Goal, created: dict
 ) -> Trackable:
     trackable = Trackable(
         milestone_id=milestone.id,
@@ -137,7 +137,17 @@ def _write_trackable(
         db.flush()
         created["gaps"].append({"id": gap.id, "question": gap.question})
 
-    target = _parse_date(p.target_date, f"trackable '{p.title}' target date") or milestone.deadline
+    # Walk up for a date: the trackable's own, else its milestone's, else the
+    # goal's. The goal's deadline is the honest upper bound -- the work has to
+    # be done by then whether or not anyone named a nearer date. Without any of
+    # the three there is no baseline, and a trackable with no baseline has no
+    # drift and no required pace: it is logged but not measurable, which is the
+    # one outcome this system exists to prevent.
+    target = (
+        _parse_date(p.target_date, f"trackable '{p.title}' target date")
+        or milestone.deadline
+        or goal.deadline
+    )
     if target is not None:
         planned = (
             max(math.ceil(p.total_units / p.prior_pace), 1)

@@ -22,7 +22,7 @@ import json
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from .client import get_client, max_tokens, model, to_contents
+from .client import generate, max_tokens, to_contents
 from .ingest import SYSTEM as INGEST_RULES
 from .ingest import IngestProposal
 
@@ -120,7 +120,6 @@ def next_turn(
 
 
 def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> InterviewTurn:
-    client = get_client()
 
     system = f"Today is {today}.\n\n{INTERVIEW_RULES}"
     if current is not None:
@@ -133,8 +132,7 @@ def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> I
             f"{json.dumps(current.model_dump(), indent=2)}"
         )
 
-    response = client.models.generate_content(
-        model=model(),
+    response = generate(
         contents=to_contents(messages),
         config=types.GenerateContentConfig(
             system_instruction=system,

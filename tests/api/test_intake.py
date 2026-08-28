@@ -189,6 +189,25 @@ def test_baseline_is_sized_from_the_users_own_estimate(client: TestClient, db_se
     assert planned == 19
 
 
+def test_a_trackable_inherits_a_deadline_when_it_names_none(client: TestClient, db_session):
+    """A trackable with no baseline has no drift and no required pace.
+
+    The model routinely gives a goal a deadline without repeating it on every
+    node beneath. Inheriting downward is what keeps those trackables measurable
+    instead of merely logged.
+    """
+    proposal = _proposal(goals=[_goal(deadline="2027-02-01", milestones=[
+        _milestone(deadline=None, trackables=[_trackable(target_date=None)])
+    ])])
+    assert client.post(
+        "/api/intake/approve", json={"proposal": proposal.model_dump()}
+    ).status_code == 201
+
+    row = db_session.exec(text("SELECT target_date, planned_sessions FROM baseline")).one()
+    assert str(row[0]) == "2027-02-01"   # inherited from the goal
+    assert row[1] == 19                  # 380 pages at the user's stated 20/session
+
+
 def test_approve_rejects_an_empty_proposal(client: TestClient):
     r = client.post("/api/intake/approve", json={"proposal": IngestProposal().model_dump()})
     assert r.status_code == 422
@@ -252,6 +271,49 @@ def test_a_parked_goal_needs_no_deadline(client: TestClient):
     assert client.post(
         "/api/intake/approve", json={"proposal": parked.model_dump()}
     ).status_code == 201
+
+
+def test_a_recurring_commitment_can_be_active_without_a_date(client: TestClient, db_session):
+    """§12: "gym six days a week has a deadline every week".
+
+    Recurring commitments are recurring deadlines, "not an exception". The
+    original CHECK demanded an absolute date of every active non-vision goal,
+    which made the entire recurring category impossible to activate -- the model
+    proposed exactly this from a real brain dump and the write path refused it.
+    """
+    gym = _proposal(goals=[_goal(
+        key="gym", title="Gym six days a week",
+        definition_of_done="Six sessions in the week", deadline=None,
+        activation="active", pace_mode="reset_period", reset_period_days=7,
+        milestones=[],
+    )])
+    assert client.post(
+        "/api/intake/approve", json={"proposal": gym.model_dump()}
+    ).status_code == 201
+
+    row = db_session.exec(text(
+        "SELECT activation, deadline, pace_mode, reset_period_days FROM goal"
+    )).one()
+    assert row[0] == "active"
+    assert row[1] is None          # no absolute date...
+    assert row[2] == "reset_period" and row[3] == 7   # ...because the window is the deadline
+
+
+def test_a_non_recurring_goal_still_needs_a_date(client: TestClient):
+    """The exemption is narrow: it does not weaken AC1 for ordinary goals."""
+    r = client.post("/api/intake/approve", json={"proposal": _proposal(
+        goals=[_goal(deadline=None, activation="active", pace_mode="carry_forward")]
+    ).model_dump()})
+    assert r.status_code == 422
+
+
+def test_reset_period_without_a_period_is_still_refused(client: TestClient):
+    """A pace_mode alone is not a deadline; the period is what makes it one."""
+    r = client.post("/api/intake/approve", json={"proposal": _proposal(
+        goals=[_goal(deadline=None, activation="active",
+                     pace_mode="reset_period", reset_period_days=None)]
+    ).model_dump()})
+    assert r.status_code == 422
 
 
 def test_exploratory_milestones_persist_without_units(client: TestClient, db_session):

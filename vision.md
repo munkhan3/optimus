@@ -502,9 +502,15 @@ CREATE TABLE goal (
     verified            BOOLEAN NOT NULL DEFAULT 0,
     created_at          TIMESTAMP NOT NULL,
 
-    -- A vision is directional and unbounded (§9), so the deadline rule
-    -- exempts it; without this an active vision is impossible to create.
-    CHECK (kind = 'vision' OR activation <> 'active' OR deadline IS NOT NULL),
+    -- Two exemptions, because "no deadline column" does not mean "no deadline".
+    -- A vision is directional and unbounded (§9). A reset_period commitment has
+    -- a deadline every period (§12: "gym six days a week has a deadline every
+    -- week"); requiring an absolute date made the whole recurring category
+    -- impossible to activate.
+    CHECK (kind = 'vision'
+           OR activation <> 'active'
+           OR deadline IS NOT NULL
+           OR (pace_mode = 'reset_period' AND reset_period_days IS NOT NULL)),
     CHECK (pace_mode <> 'reset_period' OR reset_period_days IS NOT NULL)
 );
 

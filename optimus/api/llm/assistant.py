@@ -20,7 +20,7 @@ from google.genai import types
 from sqlmodel import Session
 
 from ..settings import get_raw_config
-from .client import get_client, max_tokens, model, to_contents
+from .client import generate, max_tokens, to_contents
 from .tools import TOOL_DECLARATIONS, dispatch
 
 SYSTEM = """\
@@ -78,7 +78,6 @@ def ask(db: Session, question: str, history: list[dict] | None = None) -> dict:
     would mean either a global session or a hidden one -- both worse than
     running the loop here where the session's lifetime is obvious.
     """
-    client = get_client()
     turn_limit = int(get_raw_config().get("llm", {}).get("assistant_max_turns", 8))
 
     contents = to_contents(history or [])
@@ -87,8 +86,7 @@ def ask(db: Session, question: str, history: list[dict] | None = None) -> dict:
     tool_calls: list[dict[str, Any]] = []
 
     for _turn in range(turn_limit):
-        response = client.models.generate_content(
-            model=model(),
+        response = generate(
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM,

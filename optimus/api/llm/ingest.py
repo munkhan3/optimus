@@ -32,7 +32,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from ..settings import get_raw_config
-from .client import get_client, max_tokens, model
+from .client import generate, max_tokens
 
 Provenance = Literal["grounded", "user_supplied", "model_estimated"]
 
@@ -172,19 +172,26 @@ the system computes downstream.
    Where a natural counter exists, use it. Where it does not, write a checkable
    condition and mark the milestone exploratory with a session budget.
 
-3. Provenance is mandatory and honest. Mark total_units 'grounded' ONLY when the
+3. LISTEN FOR "I don't know how to measure that". When the user says they have
+   no idea how to count something, believe them: that milestone is exploratory
+   with a session budget, NOT a trackable with a plausible-looking unit. A
+   countable definition of done ("two referrals") does not imply countable
+   PROGRESS -- nobody completes 0.4 of a referral per session, and a trackable
+   whose pace is meaningless corrupts every projection it feeds.
+
+4. Provenance is mandatory and honest. Mark total_units 'grounded' ONLY when the
    number is a verifiable fact (a real page count). If you inferred it, mark it
    'model_estimated' AND raise a gap for it. Never mark a guess as grounded.
 
-4. A goal with no deadline is an intention, not work in progress: leave it
+5. A goal with no deadline is an intention, not work in progress: leave it
    parked. Visions are directional and unbounded -- they never carry a deadline
    and are never 'active' work competing for time.
 
-5. Recurring commitments ("gym six days a week") are reset_period with
+6. Recurring commitments ("gym six days a week") are reset_period with
    reset_period_days set, not carry_forward. Missing two gym sessions must not
    create a debt of eight.
 
-6. Budget your questions by consequence: rank gaps by stakes x uncertainty. Ask
+7. Budget your questions by consequence: rank gaps by stakes x uncertainty. Ask
    hard where being wrong costs months (what "demo-ready" means). Ask nothing
    where the spec is already clear ("read Green Book by Dec 1" is complete).
    Being wrong about reading pace costs a week and self-corrects.
@@ -201,15 +208,13 @@ def parse_brain_dump(text: str, today: str) -> IngestProposal:
     the right advice before the API could guarantee the shape. The retry
     remains as a backstop for transport failures.
     """
-    client = get_client()
     config = get_raw_config().get("llm", {})
     retries = int(config.get("ingest_max_retries", 2))
 
     last_error: Exception | None = None
     for _attempt in range(retries + 1):
         try:
-            response = client.models.generate_content(
-                model=model(),
+            response = generate(
                 contents=(
                     f"Today is {today}.\n\n"
                     "Here is my brain dump. Extract goals, milestones, trackables, "
