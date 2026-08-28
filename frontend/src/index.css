@@ -1,31 +1,83 @@
 @import "tailwindcss";
 
-/* Goal OS is used on a phone first (P5: logging must be nearly free, and it is
-   not free if it requires being at a laptop). Everything below is sized for a
-   thumb and scaled up for wider screens. */
+/* Optimus — dark theme.
+ *
+ * Near-black canvas, cards one step lighter with no hard borders, a single
+ * bright accent, and uppercase letterspaced section labels. The palette is
+ * deliberately narrow: this screen is mostly numbers, and colour has to stay
+ * available to mean something (behind, at risk, provisional) rather than being
+ * spent on decoration.
+ */
 
 @theme {
-  --color-ink: oklch(0.22 0.01 260);
-  --color-muted: oklch(0.55 0.015 260);
-  --color-line: oklch(0.91 0.005 260);
-  --color-surface: oklch(0.99 0.002 260);
-  --color-raised: oklch(1 0 0);
-  --color-accent: oklch(0.55 0.16 255);
-  --color-good: oklch(0.62 0.14 155);
-  --color-warn: oklch(0.72 0.15 75);
-  --color-bad: oklch(0.58 0.19 25);
+  /* Surfaces, darkest to lightest. Chroma is kept near zero: at these
+     lightness values even 0.007 reads as a warm cast, and the canvas has to
+     stay neutral so the accent and the state colours carry all the meaning. */
+  --color-bg: oklch(0.145 0.002 270);
+  --color-surface: oklch(0.190 0.003 270);
+  --color-raised: oklch(0.240 0.004 270);
+  --color-line: oklch(0.292 0.005 270);
+
+  /* Text, brightest to faintest. */
+  --color-ink: oklch(0.975 0.001 270);
+  --color-muted: oklch(0.715 0.006 270);
+  --color-faint: oklch(0.560 0.008 270);
+
+  --color-accent: oklch(0.68 0.165 250);
+  --color-accent-soft: oklch(0.30 0.060 250);
+
+  /* Reserved for state, never for emphasis. */
+  --color-good: oklch(0.78 0.155 155);
+  --color-warn: oklch(0.80 0.140 75);
+  --color-bad: oklch(0.68 0.170 20);
 }
 
-html { -webkit-text-size-adjust: 100%; }
+/* Score-breakdown component colours, so each term keeps a stable identity
+   across items. These live in :root rather than @theme deliberately: Tailwind
+   v4 only emits theme variables that some generated utility references, and
+   these are consumed by inline styles alone -- inside @theme they get
+   tree-shaken away and every bar silently renders empty. */
+:root {
+  --series-1: oklch(0.68 0.165 250);
+  --series-2: oklch(0.72 0.130 205);
+  --series-3: oklch(0.76 0.140 160);
+  --series-4: oklch(0.80 0.130 95);
+  --series-5: oklch(0.74 0.140 45);
+  --series-6: oklch(0.70 0.150 330);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
+}
 
 body {
-  background: var(--color-surface);
+  background: var(--color-bg);
   color: var(--color-ink);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-feature-settings: "tnum" 1;  /* aligned digits: these are numbers to compare */
+  /* Tabular figures: these are numbers meant to be compared down a column. */
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
 
-/* Respect the notch and the home indicator. */
+/* Origin's section headers: small, uppercase, widely tracked, low contrast.
+   They label a region without competing with the numbers inside it. */
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
 .safe-top { padding-top: env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 6px;
+  border: 3px solid var(--color-bg);
+}

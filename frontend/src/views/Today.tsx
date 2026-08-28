@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, ApiError } from "../lib/api";
 import type { PlanItem, TrackableView } from "../lib/types";
 import { num } from "../lib/format";
-import { Button, Card, Empty, Tag } from "../components/Primitives";
+import { Button, Card, Empty, SectionLabel, Tag } from "../components/Primitives";
 
 /**
  * Today's plan (§25.5).
@@ -62,9 +62,10 @@ export function Today({
           signal, and saying so is the whole point -- the alternative is issuing
           a day the user will not complete and calling it a plan. */}
       {capBinding && (
-        <Card className="border-warn/40 bg-warn/8">
-          <div className="text-sm font-semibold text-warn">This week does not fit</div>
-          <p className="mt-1 text-xs text-muted">
+        <Card className="bg-warn/8">
+          <SectionLabel>Attention</SectionLabel>
+          <div className="mt-1.5 text-sm font-semibold text-warn">This week does not fit</div>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">
             The catch-up cap is binding, so today's numbers are capped rather than honest. Spreading
             the shortfall further would just produce a day you will not finish. Rebaseline instead:
             add sessions from another goal, cut scope, move the date, or declare it infeasible.
@@ -149,33 +150,7 @@ function PlanRow({
       {/* P3: decomposed into the components that produced it. If the user
           cannot interrogate a recommendation, they cannot calibrate trust in
           it, and they will eventually discard the whole system. */}
-      {open && (
-        <div className="mt-2 space-y-1.5 rounded-xl bg-surface p-3">
-          {item.score_breakdown.components.map((c) => (
-            <div key={c.name} className="flex items-center gap-2 text-xs">
-              <span className="w-36 shrink-0 text-muted">{c.name.replace(/_/g, " ")}</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-                <div
-                  className={`h-1.5 rounded-full ${c.contribution < 0 ? "bg-bad" : "bg-accent"}`}
-                  style={{ width: `${Math.min(100, Math.abs(c.contribution) * 250)}%` }}
-                />
-              </div>
-              <span className="w-14 shrink-0 text-right font-mono text-[11px]">
-                {c.contribution >= 0 ? "+" : ""}
-                {c.contribution.toFixed(3)}
-              </span>
-            </div>
-          ))}
-          <div className="flex justify-between border-t border-line pt-1.5 text-xs font-semibold">
-            <span>score</span>
-            <span className="font-mono">{item.score.toFixed(4)}</span>
-          </div>
-          <p className="pt-1 text-[11px] text-muted">
-            Scored once for the week and reused today — logging a session does not reshuffle this
-            list.
-          </p>
-        </div>
-      )}
+      {open && <Breakdown item={item} />}
 
       {/* §18: accept / modify / reject / defer, recorded. Revealed preference
           is the only real signal about what the user actually values. */}
@@ -192,5 +167,65 @@ function PlanRow({
         ))}
       </div>
     </Card>
+  );
+}
+
+
+/**
+ * P3: the score decomposed into the components that produced it.
+ *
+ * Widths are scaled against the largest term in THIS item rather than against
+ * an absolute constant. Several components are legitimately zero — an item with
+ * no deadline earns no urgency — and on a fixed scale those render as empty
+ * full-width tracks that read as *full* bars. Relative scaling makes the
+ * dominant term obvious and an absent one unmistakably absent.
+ */
+function Breakdown({ item }: { item: PlanItem }) {
+  const components = item.score_breakdown.components;
+  const peak = Math.max(...components.map((c) => Math.abs(c.contribution)), 1e-9);
+
+  return (
+    <div className="mt-3 space-y-2.5 rounded-xl bg-bg p-4">
+      {components.map((c, i) => {
+        const share = Math.abs(c.contribution) / peak;
+        const zero = Math.abs(c.contribution) < 1e-9;
+        return (
+          <div key={c.name} className="flex items-center gap-3 text-xs">
+            <span className={`w-32 shrink-0 ${zero ? "text-faint" : "text-muted"}`}>
+              {c.name.replace(/_/g, " ")}
+            </span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised">
+              {!zero && (
+                <div
+                  className="h-1.5 rounded-full"
+                  style={{
+                    width: `${Math.max(share * 100, 3)}%`,
+                    background: c.contribution < 0
+                      ? "var(--color-bad)"
+                      : `var(--series-${(i % 6) + 1})`,
+                  }}
+                />
+              )}
+            </div>
+            <span
+              className={`w-14 shrink-0 text-right font-mono text-[11px] ${
+                zero ? "text-faint" : c.contribution < 0 ? "text-bad" : "text-ink"
+              }`}
+            >
+              {c.contribution >= 0 ? "+" : ""}
+              {c.contribution.toFixed(3)}
+            </span>
+          </div>
+        );
+      })}
+
+      <div className="flex justify-between border-t border-line pt-2.5 text-xs font-semibold">
+        <span>score</span>
+        <span className="font-mono">{item.score.toFixed(4)}</span>
+      </div>
+      <p className="text-[11px] leading-relaxed text-faint">
+        Scored once for the week and reused today — logging a session does not reshuffle this list.
+      </p>
+    </div>
   );
 }

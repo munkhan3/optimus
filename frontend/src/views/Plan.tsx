@@ -129,7 +129,7 @@ function CapacitySection({
     return (
       <Card>
         <SectionTitle>This week's capacity</SectionTitle>
-        <p className="mt-1 text-xs text-muted">
+        <p className="mt-1.5 text-xs leading-relaxed text-muted">
           How many focus hours actually exist this week — after coursework, work, sleep, and life.
           Declared, not guessed: everything downstream divides this number.
         </p>
@@ -138,7 +138,7 @@ function CapacitySection({
             type="number"
             value={hours}
             onChange={(e) => setHours(e.target.value)}
-            className="min-h-11 w-24 rounded-xl border border-line bg-surface px-3 text-sm"
+            className="min-h-11 w-24 rounded-xl border border-line bg-raised px-3 text-sm"
           />
           <Button onClick={declare}>Declare hours</Button>
         </div>
@@ -246,7 +246,7 @@ function RankingSection({
   return (
     <Card>
       <SectionTitle>Commit the week</SectionTitle>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1.5 text-xs leading-relaxed text-muted">
         Ranked once, now. The daily plan redistributes these without re-scoring — that stability is
         what keeps the plan believable.
       </p>
@@ -267,7 +267,7 @@ function RankingSection({
               placeholder="0"
               value={sessions[key(r)] ?? ""}
               onChange={(e) => setSessions((s) => ({ ...s, [key(r)]: e.target.value }))}
-              className="min-h-11 w-16 rounded-xl border border-line bg-surface px-2 text-center text-sm"
+              className="min-h-11 w-16 rounded-xl border border-line bg-raised px-2 text-center text-sm"
             />
           </div>
         ))}
@@ -357,7 +357,7 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-surface px-2 text-sm text-ink"
+            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
           />
         </label>
         <label className="w-24 text-xs text-muted">
@@ -368,7 +368,7 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
             max={5}
             value={stakes}
             onChange={(e) => setStakes(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-surface px-2 text-sm text-ink"
+            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
           />
         </label>
       </div>
@@ -409,7 +409,7 @@ function RebaselineSection({
   return (
     <Card>
       <SectionTitle>Rebaseline</SectionTitle>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1.5 text-xs leading-relaxed text-muted">
         When reality diverges from the plan, choose explicitly. Version 1 is kept forever so the
         drift stays visible.
       </p>
@@ -418,7 +418,7 @@ function RebaselineSection({
           <button
             key={t.trackable_id}
             onClick={() => setTarget(t)}
-            className="flex w-full items-center justify-between rounded-xl border border-line px-3 py-2 text-left text-sm"
+            className="flex w-full items-center justify-between rounded-xl bg-raised px-3 py-2.5 text-left text-sm"
           >
             <span className="truncate">{t.title}</span>
             <span className="text-xs text-muted">
@@ -509,7 +509,7 @@ function RebaselineForm({
                 type="number"
                 value={sessions}
                 onChange={(e) => setSessions(e.target.value)}
-                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-surface px-2 text-sm text-ink"
+                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
               />
             </label>
             <label className="flex-1 text-xs text-muted">
@@ -518,7 +518,7 @@ function RebaselineForm({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-surface px-2 text-sm text-ink"
+                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
               />
             </label>
           </div>
@@ -615,7 +615,7 @@ function MilestoneRowView({
 }) {
   const [adding, setAdding] = useState(false);
   return (
-    <div className="rounded-lg bg-surface px-3 py-2">
+    <div className="rounded-lg bg-raised px-3 py-2">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm">{milestone.title}</span>
         {/* §10: work with no natural counter is budgeted in sessions, not
@@ -826,7 +826,7 @@ function NewTrackableForm({
 /* ---------------------------------------------------------------- primitives */
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="text-sm font-bold">{children}</div>;
+  return <div className="text-sm font-semibold">{children}</div>;
 }
 
 function Field({
@@ -847,7 +847,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink"
+        className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-3 text-sm text-ink"
       />
     </label>
   );

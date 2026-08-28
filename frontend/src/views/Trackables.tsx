@@ -10,7 +10,7 @@ import {
   projectionText,
   relativeDays,
 } from "../lib/format";
-import { Button, Card, Empty, ProgressBar, Stat, Tag } from "../components/Primitives";
+import { BigStat, Button, Card, Empty, ProgressBar, Stat, Tag } from "../components/Primitives";
 
 /**
  * The M1 screen: trackables with progress, pace, interval, drift, projection.
@@ -82,17 +82,20 @@ function TrackableCard({
         </Button>
       </div>
 
-      <div className="mt-3">
-        <div className="mb-1 flex items-baseline justify-between text-xs text-muted">
-          <span>
-            {num(t.progress.completed_units, 0)} / {num(t.progress.total_units, 0)} {t.unit}
-          </span>
-          <span className="font-semibold text-ink">{pct(t.progress.fraction)}</span>
+      <div className="mt-4">
+        <BigStat
+          value={pct(t.progress.fraction)}
+          caption={`${num(t.progress.completed_units, 0)} of ${num(
+            t.progress.total_units,
+            0,
+          )} ${t.unit}`}
+        />
+        <div className="mt-3">
+          <ProgressBar fraction={t.progress.fraction} tone={infeasible ? "bad" : "accent"} />
         </div>
-        <ProgressBar fraction={t.progress.fraction} />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
         <Stat
           label="Pace"
           value={paceText(t.pace, t.unit)}
@@ -130,19 +133,19 @@ function TrackableCard({
       {/* D8: the interval is displayed and gates exactly one decision --
           whether to rebaseline. It is not propagated into any arithmetic. */}
       {interval && (
-        <div className="mt-3 text-xs text-muted">
+        <div className="mt-4 text-xs text-faint">
           Typical range {interval}
           {t.pace.interval?.provisional && " · provisional, too few sessions to trust"}
         </div>
       )}
 
       {infeasible && (
-        <div className="mt-3 rounded-xl bg-bad/8 px-3 py-2 text-xs text-bad">
+        <div className="mt-4 rounded-xl bg-bad/10 px-3 py-2.5 text-xs leading-relaxed text-bad">
           {t.feasibility.reason}
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-faint">
         <span>last worked {relativeDays(t.days_since_last_session)}</span>
         <span>
           {t.sessions_used_this_week} session{t.sessions_used_this_week === 1 ? "" : "s"} this week

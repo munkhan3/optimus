@@ -2,22 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, getToken, setToken } from "./lib/api";
 import type { PlanItem, TrackableView, WorkSession } from "./lib/types";
 import { SessionBar } from "./components/SessionBar";
-import { Button, Card } from "./components/Primitives";
+import { Button, Card, Field } from "./components/Primitives";
+import { Shell, type Tab } from "./components/Shell";
 import { Trackables } from "./views/Trackables";
 import { Today } from "./views/Today";
-import { Assistant } from "./views/Assistant";
 import { Plan } from "./views/Plan";
 import { Review } from "./views/Review";
-
-type Tab = "today" | "work" | "plan" | "review" | "ask";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "work", label: "Work" },
-  { id: "plan", label: "Plan" },
-  { id: "review", label: "Week" },
-  { id: "ask", label: "Ask" },
-];
+import { Assistant } from "./views/Assistant";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -67,38 +58,10 @@ export default function App() {
   if (!authed) return <TokenGate onSaved={() => setAuthed(true)} />;
 
   return (
-    <div className="min-h-dvh">
-      <header className="safe-top sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <div>
-            <div className="text-sm font-bold tracking-tight">Optimus</div>
-            <div className="text-[11px] text-muted">
-              {new Date().toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "short",
-                day: "numeric",
-              })}
-            </div>
-          </div>
-          <nav className="flex rounded-xl border border-line bg-raised p-0.5">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`min-h-9 rounded-lg px-2.5 text-xs font-semibold transition ${
-                  tab === t.id ? "bg-accent text-white" : "text-muted"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </header>
-
-      <main className={`mx-auto max-w-2xl px-4 py-4 ${session ? "pb-40" : "pb-16"}`}>
+    <>
+      <Shell tab={tab} setTab={setTab}>
         {error && (
-          <div className="mb-3 rounded-xl bg-bad/8 px-3 py-2 text-xs text-bad">{error}</div>
+          <div className="mb-4 rounded-xl bg-bad/10 px-4 py-3 text-xs text-bad">{error}</div>
         )}
 
         {tab === "today" && (
@@ -117,7 +80,7 @@ export default function App() {
         {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
         {tab === "review" && <Review />}
         {tab === "ask" && <Assistant />}
-      </main>
+      </Shell>
 
       {session && (
         <SessionBar
@@ -126,7 +89,7 @@ export default function App() {
           onEnded={refresh}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -134,22 +97,23 @@ export default function App() {
 function TokenGate({ onSaved }: { onSaved: () => void }) {
   const [value, setValue] = useState("");
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm items-center px-4">
+    <div className="mx-auto flex min-h-dvh max-w-sm items-center px-5">
       <Card className="w-full">
-        <div className="text-base font-bold">Optimus</div>
-        <p className="mt-1 text-xs text-muted">
+        <div className="text-lg font-semibold tracking-tight">Optimus</div>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted">
           Paste your access token. Single user, so this is the only credential — it is stored on
           this device.
         </p>
-        <input
+        <Field
+          label="Token"
           type="password"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="token"
-          className="mt-3 min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-accent"
+          onChange={setValue}
+          placeholder="••••••••"
+          className="mt-4"
         />
         <Button
-          className="mt-3 w-full"
+          className="mt-4 w-full"
           disabled={!value.trim()}
           onClick={() => {
             setToken(value);

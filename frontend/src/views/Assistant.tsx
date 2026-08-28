@@ -41,7 +41,7 @@ export function Assistant() {
 
   return (
     <div className="space-y-3">
-      <Card className="bg-surface">
+      <Card>
         <div className="text-xs text-muted">
           Reads your data; cannot change it. There are no write tools in v0 — deadline changes and
           scope cuts stay yours.
@@ -50,11 +50,11 @@ export function Assistant() {
 
       {turns.map((turn, i) => (
         <div key={i} className="space-y-2">
-          <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-4 py-2 text-sm text-white">
+          <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-white">
             {turn.question}
           </div>
           <Card>
-            <div className="whitespace-pre-wrap text-sm">{turn.answer}</div>
+            <div className="whitespace-pre-wrap text-sm leading-relaxed">{turn.answer}</div>
             {turn.tools.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {/* Show what the answer was actually based on -- an assistant
@@ -76,7 +76,7 @@ export function Assistant() {
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && ask()}
           placeholder="Why is this first? Am I going to make December?"
-          className="min-h-11 flex-1 rounded-xl border border-line bg-raised px-3 text-sm outline-none focus:border-accent"
+          className="min-h-11 flex-1 rounded-xl bg-surface px-3.5 text-sm text-ink outline-none placeholder:text-faint focus:ring-1 focus:ring-accent"
         />
         <Button onClick={ask} disabled={busy || !question.trim()}>
           {busy ? "…" : "Ask"}

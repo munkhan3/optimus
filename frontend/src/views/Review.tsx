@@ -61,9 +61,9 @@ export function Review() {
 
       {/* --- what you said you'd do, and what happened ---------------------- */}
       <Card>
-        <div className="text-sm font-bold">Plan vs actual</div>
+        <div className="text-sm font-semibold">Plan vs actual</div>
         {review.plan_vs_actual.length === 0 ? (
-          <p className="mt-1 text-xs text-muted">Nothing committed this week.</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">Nothing committed this week.</p>
         ) : (
           <div className="mt-3 space-y-3">
             {review.plan_vs_actual.map((row, i) => (
@@ -99,8 +99,8 @@ export function Review() {
       {/* --- the thing the system knows that you don't (§13) ---------------- */}
       {Object.keys(review.calibration).length > 0 && (
         <Card>
-          <div className="text-sm font-bold">What you actually deliver</div>
-          <p className="mt-1 text-xs text-muted">
+          <div className="text-sm font-semibold">What you actually deliver</div>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">
             Your output divided by what you expected. Trending toward 1.0 means your estimates are
             getting honest.
           </p>
@@ -123,7 +123,7 @@ export function Review() {
 
       {/* --- gated: nothing here on a wide interval (§25.4) ----------------- */}
       {review.rebaseline_prompts.length > 0 && (
-        <Card className="border-warn/40 bg-warn/8">
+        <Card className="bg-warn/8">
           <div className="text-sm font-bold text-warn">Worth rebaselining</div>
           <div className="mt-2 space-y-3">
             {review.rebaseline_prompts.map((p, i) => (
@@ -147,8 +147,8 @@ export function Review() {
       {/* --- D3: nothing the model guessed stays quietly guessed ------------ */}
       {review.model_estimated_values.length > 0 && (
         <Card>
-          <div className="text-sm font-bold">Numbers I guessed</div>
-          <p className="mt-1 text-xs text-muted">
+          <div className="text-sm font-semibold">Numbers I guessed</div>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">
             These were inferred, not measured. They are worth correcting — everything downstream
             rests on them.
           </p>
@@ -166,7 +166,7 @@ export function Review() {
       {/* --- §22.2: asked in priority order, and they persist until answered  */}
       {review.open_gaps.length > 0 && (
         <Card>
-          <div className="text-sm font-bold">Still unanswered</div>
+          <div className="text-sm font-semibold">Still unanswered</div>
           <div className="mt-2 space-y-2">
             {review.open_gaps.map((g) => (
               <div key={g.id} className="text-sm">
@@ -179,7 +179,7 @@ export function Review() {
 
       {Object.keys(review.revealed_preference).length > 0 && (
         <Card>
-          <div className="text-sm font-bold">What you did with the plan</div>
+          <div className="text-sm font-semibold">What you did with the plan</div>
           <div className="mt-2 flex flex-wrap gap-2">
             {Object.entries(review.revealed_preference).map(([action, count]) => (
               <Tag key={action}>

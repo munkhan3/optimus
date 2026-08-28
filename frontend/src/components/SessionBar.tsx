@@ -57,16 +57,16 @@ export function SessionBar({
   }
 
   return (
-    <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-raised/95 backdrop-blur">
-      <div className="mx-auto max-w-2xl px-4 py-3">
+    <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur">
+      <div className="mx-auto max-w-3xl px-4 py-3 sm:px-6 lg:pl-[264px]">
         {!confirming ? (
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">
                 {trackable?.title ?? "Session in progress"}
               </div>
-              <div className="text-xs text-muted">
-                <span className="font-mono">{elapsed(session.started_at)}</span>
+              <div className="text-xs text-faint">
+                <span className="font-mono text-accent">{elapsed(session.started_at)}</span>
                 {" / "}
                 {session.planned_minutes}m
                 {session.expected_output !== null && (
@@ -99,7 +99,7 @@ export function SessionBar({
               </Button>
             </div>
             <button
-              className="text-xs text-muted underline underline-offset-2"
+              className="text-xs text-faint underline underline-offset-2 hover:text-muted"
               onClick={() => setConfirming(false)}
             >
               keep working
@@ -114,7 +114,7 @@ export function SessionBar({
                 inputMode="decimal"
                 value={output}
                 onChange={(e) => setOutput(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-3 text-lg font-semibold outline-none focus:border-accent"
+                className="mt-1.5 w-full rounded-xl bg-raised px-3 py-3 text-lg font-semibold text-ink outline-none focus:ring-1 focus:ring-accent"
               />
             </label>
             <div className="flex items-center justify-between">
@@ -129,7 +129,7 @@ export function SessionBar({
                 <Tag>excluded from pace</Tag>
               </label>
               <button
-                className="text-xs text-muted underline underline-offset-2"
+                className="text-xs text-faint underline underline-offset-2 hover:text-muted"
                 onClick={() => setConfirming(false)}
               >
                 cancel
