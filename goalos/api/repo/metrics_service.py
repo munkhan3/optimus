@@ -12,7 +12,7 @@ belongs in goalos/metrics instead.
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlmodel import Session, select
@@ -36,8 +36,17 @@ from . import loader
 
 
 def _serialize(obj: Any) -> Any:
+    """Flatten engine dataclasses to JSON-ready primitives.
+
+    Dates become ISO strings here rather than at each call site, so the HTTP
+    response and the assistant's tool output are byte-identical. If the two
+    disagreed, the assistant could describe a number differently from the screen
+    the user is looking at -- and both would then be suspect.
+    """
     if obj is None:
         return None
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
     if hasattr(obj, "__dataclass_fields__"):
         return {k: _serialize(v) for k, v in asdict(obj).items()}
     if isinstance(obj, dict):

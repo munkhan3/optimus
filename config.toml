@@ -76,11 +76,16 @@ min_priority_to_ask = 1.5
 max_questions_per_session = 7
 
 [llm]
-# vision.md §26 pins claude-sonnet-4-6, which is stale.
+# §26 pins claude-sonnet-4-6, which is stale. The spec deliberately chose the
+# Sonnet tier, so this is its current equivalent rather than an upgrade to Opus.
 model = "claude-sonnet-5"
-max_tokens = 8192
-# Ingestion returns strict JSON; retry on malformed output (§26).
+# Ingestion is one bounded pass over a brain dump; the assistant may run longer.
+max_tokens = 16000
+# §26 asks for a re-prompt on malformed output. Structured outputs make that
+# nearly unreachable, but the retry stays as a backstop for transport failures.
 ingest_max_retries = 2
+# Read-only assistant (§26): no write tools exist in v0, by design (D10).
+assistant_max_turns = 8
 
 [health]
 # §24.8 composite goal health. Components are ALWAYS displayed alongside the
