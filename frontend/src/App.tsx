@@ -6,12 +6,14 @@ import { Button, Card } from "./components/Primitives";
 import { Trackables } from "./views/Trackables";
 import { Today } from "./views/Today";
 import { Assistant } from "./views/Assistant";
+import { Plan } from "./views/Plan";
 
-type Tab = "today" | "work" | "ask";
+type Tab = "today" | "work" | "plan" | "ask";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "work", label: "Work" },
+  { id: "plan", label: "Plan" },
   { id: "ask", label: "Ask" },
 ];
 
@@ -110,6 +112,7 @@ export default function App() {
         {tab === "work" && (
           <Trackables trackables={trackables} onStarted={refresh} busy={busy || !!session} />
         )}
+        {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
         {tab === "ask" && <Assistant />}
       </main>
 
