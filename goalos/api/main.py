@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from .auth import require_token
 from .db import get_engine
-from .routers import baselines, goals, sessions, trackables
+from .routers import baselines, capacity, goals, planning, sessions, trackables
 from .settings import get_metrics_config
 
 app = FastAPI(
@@ -27,7 +27,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-for router in (trackables.router, sessions.router, goals.router, baselines.router):
+for router in (
+    trackables.router,
+    sessions.router,
+    goals.router,
+    baselines.router,
+    capacity.router,
+    planning.router,
+):
     app.include_router(router, dependencies=[Depends(require_token)])
 
 

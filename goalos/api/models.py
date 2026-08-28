@@ -270,6 +270,16 @@ class WeeklyCommitment(SQLModel, table=True):
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
     committed_sessions: int
     target_units: float | None = None
+    # D9 requires the weekly score to be computed ONCE and reused by every day
+    # of that week -- re-scoring daily produces the thrash §16 warns about. §21
+    # gives it nowhere to live, since plan_item is rewritten each day, so the
+    # frozen score and its breakdown are stored here at commit time and copied
+    # onto each day's plan_item unchanged.
+    score: float | None = None
+    score_breakdown: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True),
+    )
     committed_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
