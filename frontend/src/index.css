@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+/* Three voices (design.md §Tokens — Typography). Newsreader substitutes for Lyon
+   Display: it is the only quality free serif with a true 300, and weight 300 is
+   the system's defining tension -- the display is never bolded. Italic is loaded
+   because headlines mix an italic word into roman for editorial tension. */
+@import "@fontsource-variable/newsreader/wght.css";
+@import "@fontsource-variable/newsreader/wght-italic.css";
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/roboto-mono/wght.css";
+
+/* Optimus — dark theme, after Origin Financial (design.md).
+ *
+ * A near-black gallery: surfaces separated by colour step rather than shadow, a
+ * serif that whispers at display sizes, mono reserved for uppercase technical
+ * labels, and white-on-black as the only primary action. Chromatic colour is
+ * spent exclusively on data signals, which leaves the state colours free to mean
+ * something -- this screen is mostly numbers, and colour has to stay available
+ * for "behind", "at risk", "provisional".
+ */
+
+@theme {
+  /* ------------------------------------------------------------------ type */
+  --font-display: "Newsreader Variable", ui-serif, Georgia, Cambria, serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Roboto Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* design.md's scale, rescaled from landing-page to product tempo: the display
+     voice caps at 38px rather than 96px, because a focus queue has to fit on one
+     screen. The tight leading on the two largest steps is the signature. */
+  --text-mono-label: 11px;
+  --text-mono-label--line-height: 1.6;
+  --text-mono-label--letter-spacing: 0.182em;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 1.5;
+  --text-body: 16px;
+  --text-body--line-height: 1.5;
+  --text-subheading: 18px;
+  --text-subheading--line-height: 1.5;
+  --text-heading: 30px;
+  --text-heading--line-height: 1;
+  --text-display: 38px;
+  --text-display--line-height: 0.9;
+
+  /* -------------------------------------------------------------- surfaces */
+  /* Obsidian -> card -> Graphite -> Steel. The 0x1a card step is interpolated,
+     not from design.md: Origin jumps Obsidian straight to Graphite because a
+     landing page stacks few cards, but Today stacks six or more and at Graphite
+     they read as a wall of grey. Graphite is kept for the level inside a card. */
+  --color-bg: #0f1011;
+  --color-abyss: #090a0b;
+  --color-surface: #1a1b1c;
+  --color-raised: #2e2e2e;
+  --color-line: #3f4041;
+  --color-silver: #cacaca;
+
+  /* Text. Body copy is never pure white (design.md "Don't"): Cloud for headings,
+     Ash for descriptions, Fog for annotations. Pure white is spent on one thing
+     only -- the primary action fill -- which is what makes it read as the
+     brightest element on the screen. */
+  --color-ink: #f5f5f7;
+  --color-muted: #9f9fa0;
+  --color-faint: #6a6b6b;
+  --color-pure: #ffffff;
+  --color-void: #000000;
+
+  /* Chromatic. Reserved for data signals and interactive identity, never for
+     emphasis and never below 18px -- at small sizes these vibrate against the
+     dark canvas. --color-accent is retained as an alias for iris so the existing
+     utilities keep resolving. */
+  --color-iris: #847dff;
+  --color-cyan: #00b3dd;
+  --color-accent: #847dff;
+  --color-accent-soft: #4b49aa;
+
+  /* Reserved for state, never for emphasis. design.md has no state palette --
+     a marketing page has no state -- but a system whose first principle is
+     never fabricating a number needs one. Deliberate extension. */
+  --color-good: oklch(0.78 0.155 155);
+  --color-warn: oklch(0.80 0.140 75);
+  --color-bad: oklch(0.68 0.170 20);
+
+  /* -------------------------------------------------------------- geometry */
+  --radius-control: 8px;
+  --radius-card: 16px;
+  --radius-inverted: 30px;
+}
+
+/* Score-breakdown component colours, so each term keeps a stable identity across
+   items. Origin's chromatic set, which design.md scopes to exactly this use:
+   chart lines and data signals.
+
+   These live in :root rather than @theme deliberately: Tailwind v4 only emits
+   theme variables that some generated utility references, and these are consumed
+   by inline styles alone -- inside @theme they get tree-shaken away and every bar
+   silently renders empty. */
+:root {
+  --series-1: #847dff; /* iris gleam   */
+  --series-2: #00b3dd; /* cyan signal  */
+  --series-3: #dd90d8; /* orchid bloom */
+  --series-4: #90b8f0; /* periwinkle   */
+  --series-5: #d1c9ff; /* pale iris    */
+  --series-6: #4b49aa; /* deep iris    */
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Tabular figures: these are numbers meant to be compared down a column. */
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* The mono voice: uppercase, widely tracked, low contrast. design.md gives this
+   the widest tracking in the system -- it labels a region as an annotation
+   rather than competing with the figure inside it. */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 500;
+  letter-spacing: var(--text-mono-label--letter-spacing);
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* The display voice. Only ever at 300 -- never bolded (design.md "Don't"). */
+.display {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+}
+
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* There were no focus styles anywhere before this. White reads on every dark
+   surface in the system; the inverted Silver card is the one place it does not,
+   so it flips to Void. */
+:focus-visible {
+  outline: 2px solid var(--color-pure);
+  outline-offset: 2px;
+}
+.inverted :focus-visible {
+  outline-color: var(--color-void);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 6px;
+  border: 3px solid var(--color-bg);
+}
+
+/* New nodes arrive rather than blink into place: during intake the tree grows
+   while the user watches, and the motion is what makes the growth legible. */
+@keyframes nodeIn {
+  from { opacity: 0; transform: scale(0.9) translateX(-8px); }
+  to   { opacity: 1; transform: scale(1) translateX(0); }
+}
+
+@keyframes orbPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.12); }
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* design.md's motion philosophy is predictability over spectacle, and the growing
+   tree is the one animation carrying meaning rather than decoration. Honouring a
+   reduced-motion preference means it still arrives -- it just arrives at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

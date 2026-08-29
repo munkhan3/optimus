@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: unanchored these also matched frontend/src/lib/,
+# which silently kept the API client, the shared types and the formatters out of
+# every commit -- a fresh clone did not build.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -216,3 +219,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Goal OS additions ---
+# Frontend
+node_modules/
+frontend/dist/
+
+# macOS
+.DS_Store
+
+# Local secrets. The single-user bearer token must never be committed (§19).
+.env.local
