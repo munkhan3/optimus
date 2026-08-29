@@ -4,12 +4,60 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import Engine
+from fastapi import Request
+from sqlalchemy import Engine, event, text
+from sqlalchemy.orm import with_loader_criteria
 from sqlmodel import Session, create_engine
 
+from .models import (
+    Area,
+    Baseline,
+    Capacity,
+    DailyPlan,
+    Goal,
+    GoalBudget,
+    Milestone,
+    OpenGap,
+    PlanItem,
+    ProgressCheckRow,
+    Task,
+    Trackable,
+    WeeklyCommitment,
+    WorkSession,
+)
 from .settings import get_settings
 
 _engine: Engine | None = None
+TENANT_MODELS = (
+    Area, Goal, Milestone, Trackable, Task, Capacity, GoalBudget, WeeklyCommitment,
+    WorkSession, ProgressCheckRow, Baseline, OpenGap, DailyPlan, PlanItem,
+)
+
+
+@event.listens_for(Session, "after_begin")
+def set_tenant_context(session: Session, _transaction, connection) -> None:
+    """Reapply the RLS identity after every commit starts a new transaction."""
+    user_id = session.info.get("user_id")
+    if user_id is not None and connection.dialect.name == "postgresql":
+        connection.exec_driver_sql(f"SET LOCAL app.user_id = '{int(user_id)}'")
+
+
+@event.listens_for(Session, "do_orm_execute")
+def scope_orm_reads(execute_state) -> None:
+    """Defence in depth for environments whose database role bypasses RLS."""
+    user_id = execute_state.session.info.get("user_id")
+    if user_id is None or not execute_state.is_select:
+        return
+    statement = execute_state.statement
+    for model in TENANT_MODELS:
+        statement = statement.options(
+            with_loader_criteria(
+                model,
+                lambda entity: entity.user_id == user_id,
+                include_aliases=True,
+            )
+        )
+    execute_state.statement = statement
 
 
 def get_engine() -> Engine:
@@ -19,8 +67,18 @@ def get_engine() -> Engine:
     return _engine
 
 
-def get_session() -> Iterator[Session]:
+def get_session(request: Request) -> Iterator[Session]:
     with Session(get_engine()) as session:
+        # PostgreSQL RLS policies use this transaction-local setting. Auth sets
+        # it before a route opens its data session; public account endpoints
+        # run without it and only touch the auth tables.
+        user_id = getattr(request.state, "user_id", None)
+        if user_id is not None:
+            session.info["user_id"] = user_id
+            # Open the initial transaction with its RLS setting in place. The
+            # after_begin listener above repeats this after endpoint commits.
+            if get_engine().dialect.name == "postgresql":
+                session.connection().exec_driver_sql(f"SET LOCAL app.user_id = '{int(user_id)}'")
         yield session
 
 

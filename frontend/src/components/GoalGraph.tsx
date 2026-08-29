@@ -1,0 +1,604 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Cluster,
+  type Focus,
+  type GraphNode,
+  type PlacedNode,
+  type ViewMode,
+  NODE_GAP,
+  VIEW_MODES,
+  layoutGraph,
+} from "../lib/graphLayout";
+import {
+  type Body,
+  type PointerState,
+  prefersReducedMotion,
+  reconcile,
+  settled,
+  snapHome,
+  step,
+} from "../lib/graphMotion";
+import { usePanZoom } from "../lib/usePanZoom";
+import { pointInPolygon } from "../lib/voronoi";
+
+/**
+ * The goal graph as a map.
+ *
+ * Separate from GoalTree, which still serves intake: that view grows one node
+ * at a time left-to-right and its layered layout is the right shape for
+ * watching a tree get built. This one is for reading a graph that already
+ * exists.
+ *
+ * The dots carry no colour. Health is a continuous value and a filled circle is
+ * a weak channel for one; worse, a single arrangement can only ever answer a
+ * single question. So meaning moved into the arrangement instead, and there are
+ * three of them -- see graphLayout.ts. Everything around the arrangement is
+ * shared: the same springs, the same pointer field, the same pan and zoom.
+ *
+ * Positions come from layoutGraph and never change per frame. The rAF loop only
+ * springs bodies toward those positions, and it stops entirely once they
+ * arrive.
+ */
+
+/** How close the cursor must be to capture a node. */
+const CAPTURE_RADIUS = 34;
+
+/** One fill for every dot. Level is carried by size, nothing by hue. */
+const NODE_FILL = "var(--color-ink)";
+
+const VIEW_KEY = "optimus.graphView";
+
+function storedMode(): ViewMode {
+  if (typeof localStorage === "undefined") return "areas";
+  const saved = localStorage.getItem(VIEW_KEY);
+  return VIEW_MODES.some((v) => v.mode === saved) ? (saved as ViewMode) : "areas";
+}
+
+export function GoalGraph({
+  clusters,
+  focus,
+  onFocus,
+  selectedKey,
+  onSelect,
+  className = "",
+}: {
+  clusters: Cluster[];
+  focus: Focus;
+  onFocus: (f: Focus) => void;
+  selectedKey: string | null;
+  onSelect: (node: GraphNode | null) => void;
+  className?: string;
+}) {
+  const [mode, setMode] = useState<ViewMode>(storedMode);
+  const layout = useMemo(() => layoutGraph(clusters, mode), [clusters, mode]);
+  const { view, setView, toGraph, handlers, isPanning } = usePanZoom();
+
+  const frame = useRef<HTMLDivElement>(null);
+  const bodies = useRef(new Map<string, Body>());
+  const nodeEls = useRef(new Map<string, SVGGElement | null>());
+  const edgeEls = useRef(new Map<string, SVGPathElement | null>());
+  const pointer = useRef<PointerState>({ x: null, y: null, exemptKey: null });
+  const raf = useRef<number | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const press = useRef<{ x: number; y: number } | null>(null);
+
+  const chooseMode = useCallback((next: ViewMode) => {
+    setMode(next);
+    // Persisted, so the question you were asking survives a reload.
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // Private mode or a full quota: the view still works, it just forgets.
+    }
+  }, []);
+
+  const byKey = useMemo(() => {
+    const m = new Map<string, PlacedNode>();
+    layout.nodes.forEach((p) => m.set(p.node.key, p));
+    return m;
+  }, [layout]);
+
+  /** Keys on the path from a node up to its root, for hover emphasis. */
+  const ancestors = useMemo(() => {
+    const parent = new Map<string, string>();
+    layout.edges.forEach((e) => parent.set(e.to, e.from));
+    return (key: string | null) => {
+      const chain = new Set<string>();
+      let at = key;
+      while (at) {
+        chain.add(at);
+        at = parent.get(at) ?? null;
+      }
+      return chain;
+    };
+  }, [layout]);
+
+  /** Descendants of a key, so lighting a goal lights its whole branch. */
+  const subtree = useMemo(() => {
+    const kids = new Map<string, string[]>();
+    layout.edges.forEach((e) => kids.set(e.from, [...(kids.get(e.from) ?? []), e.to]));
+    return (key: string) => {
+      const out = new Set<string>();
+      const walk = (k: string) => {
+        out.add(k);
+        (kids.get(k) ?? []).forEach(walk);
+      };
+      walk(key);
+      return out;
+    };
+  }, [layout.edges]);
+
+  /**
+   * What is emphasised. Empty means "nothing in particular" and everything
+   * renders at its normal weight; otherwise these are lit and the rest fades.
+   * Focus never removes a node -- it only changes how loudly it speaks.
+   */
+  const lit = useMemo(() => {
+    const key = hovered ?? selectedKey;
+    if (key) return new Set([...ancestors(key), ...subtree(key)]);
+    if (focus?.kind === "goal") return subtree(focus.key);
+    if (focus?.kind === "area") {
+      return new Set(
+        layout.nodes.filter((p) => p.areaId === focus.areaId).map((p) => p.node.key),
+      );
+    }
+    return new Set<string>();
+  }, [ancestors, subtree, hovered, selectedKey, focus, layout.nodes]);
+
+  const focusedArea = useMemo(
+    () => (focus?.kind === "goal" ? (byKey.get(focus.key)?.areaId ?? null) : null),
+    [focus, byKey],
+  );
+
+  // ------------------------------------------------------------------ motion
+
+  /* The animation loop must not capture React state. A rAF scheduled with a
+     callback from render N keeps calling that closure forever, so after a view
+     change it would happily keep drawing the previous layout's edges. Everything
+     the loop touches therefore lives in a ref, and the loop itself is created
+     exactly once. */
+  const layoutRef = useRef(layout);
+
+  const draw = useCallback(() => {
+    for (const [key, el] of nodeEls.current) {
+      const b = bodies.current.get(key);
+      if (el && b) el.setAttribute("transform", `translate(${b.x} ${b.y})`);
+    }
+    for (const e of layoutRef.current.edges) {
+      const el = edgeEls.current.get(e.key);
+      const a = bodies.current.get(e.from);
+      const z = bodies.current.get(e.to);
+      if (!el || !a || !z) continue;
+      el.setAttribute("d", `M ${a.x} ${a.y} L ${z.x} ${z.y}`);
+    }
+  }, []);
+
+  /* A NAMED function expression: `loop` inside the body binds to the function
+     itself, not to the outer const, so re-scheduling can never pick up a stale
+     copy. `draw` has no dependencies, so this identity is stable for the life of
+     the component. */
+  const loop = useCallback(function loop() {
+    /* Strictly smaller than the layout's gap. The layout separates dots to
+       exactly NODE_GAP, so a runtime separator using the same value fights
+       floating-point error forever: it nudges, the spring pulls back, the graph
+       never settles, snapHome never runs and the loop never sleeps. */
+    const peak = step(bodies.current, pointer.current, 1, NODE_GAP - 1.5);
+    draw();
+    if (settled(peak, pointer.current)) {
+      // Park exactly on the layout, so the resting frame is the deterministic
+      // picture and the loop stops costing anything at all.
+      snapHome(bodies.current);
+      draw();
+      raf.current = null;
+      return;
+    }
+    raf.current = requestAnimationFrame(loop);
+  }, [draw]);
+
+  const wake = useCallback(() => {
+    if (raf.current === null && !prefersReducedMotion()) {
+      raf.current = requestAnimationFrame(loop);
+    }
+  }, [loop]);
+
+  /* Home positions change whenever the layout does; bodies keep their current
+     position so a change settles instead of jumping. This is what makes the
+     view toggle worth having as one canvas rather than three: switching
+     re-runs the layout and the springs glide every dot to its new
+     arrangement. */
+  useEffect(() => {
+    layoutRef.current = layout;
+    const parentOf = new Map<string, string>();
+    layout.edges.forEach((e) => parentOf.set(e.to, e.from));
+    reconcile(
+      bodies.current,
+      layout.nodes.map((p) => ({
+        key: p.node.key,
+        x: p.x,
+        y: p.y,
+        r: p.radius,
+        parentKey: parentOf.get(p.node.key),
+      })),
+    );
+    if (prefersReducedMotion()) {
+      snapHome(bodies.current);
+      draw();
+    } else {
+      wake();
+    }
+  }, [layout, draw, wake]);
+
+  /* Escape steps out one level, so drilling in is reversible without hunting
+     for the Back button. Bound on the window rather than the svg: after
+     clicking a node the focus may sit on a circle, and users expect Escape to
+     work regardless of where focus landed. */
+  useEffect(() => {
+    if (!focus) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      onFocus(focus?.kind === "goal" ? { kind: "area", areaId: focusedArea } : null);
+      onSelect(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focus, focusedArea, onFocus, onSelect]);
+
+  useEffect(
+    () => () => {
+      /* Clearing the handle is not optional. Cancelling alone leaves a stale
+         frame id in the ref, and wake() treats any non-null value as "already
+         running" -- so after an unmount/remount (StrictMode, or simply leaving
+         the Tree tab and coming back) the loop could never be started again and
+         the graph froze at the origin. */
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+      raf.current = null;
+    },
+    [],
+  );
+
+  // -------------------------------------------------------------------- fit
+
+  const fit = useCallback(() => {
+    const box = frame.current?.getBoundingClientRect();
+    if (!box) return;
+    // Fit each axis against its own extent. The extents are the same in every
+    // mode -- the regions always tile the same canvas -- so switching views
+    // never rescales the picture underneath you.
+    const k = Math.min(
+      (box.width * 0.94) / (layout.extentX * 2),
+      (box.height * 0.94) / (layout.extentY * 2),
+      2.2,
+    );
+    setView({ k, x: box.width / 2, y: box.height / 2 });
+  }, [layout.extentX, layout.extentY, setView]);
+
+  useEffect(() => {
+    fit();
+    // Refit only when the shape changes, never on every focus tween -- a focus
+    // change should settle in place, not re-centre the whole map.
+  }, [clusters.length, fit]);
+
+  /* And refit when the frame itself changes size. Without this, rotating a
+     phone or crossing the desktop breakpoint leaves the map anchored to the old
+     centre, half off-screen. */
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => fit());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fit]);
+
+  // ----------------------------------------------------------------- pointer
+
+  function onMove(e: React.PointerEvent<SVGSVGElement>) {
+    handlers.onPointerMove(e);
+    if (isPanning()) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const g = toGraph(e.clientX - box.left, e.clientY - box.top);
+
+    // Capture the nearest node so the field parts AROUND it. Without this the
+    // node you are reaching for is pushed away and can never be clicked.
+    const nearest = nearestNode(g.x, g.y)?.node.key ?? null;
+    pointer.current = { x: g.x, y: g.y, exemptKey: nearest };
+    if (nearest !== hovered) setHovered(nearest);
+    wake();
+  }
+
+  function onLeave(e: React.PointerEvent<SVGSVGElement>) {
+    handlers.onPointerLeave(e);
+    pointer.current = { x: null, y: null, exemptKey: null };
+    setHovered(null);
+    wake();
+  }
+
+  function activate(p: PlacedNode) {
+    onSelect(p.node);
+    if (p.depth === 1) onFocus({ kind: "goal", key: p.node.key });
+  }
+
+  /** Nearest node within its own hit radius, or null. */
+  function nearestNode(gx: number, gy: number): PlacedNode | null {
+    let found: PlacedNode | null = null;
+    let best = Infinity;
+    for (const [key, b] of bodies.current) {
+      const placed = byKey.get(key);
+      if (!placed) continue;
+      const d = Math.hypot(b.x - gx, b.y - gy);
+      const reach = Math.max(placed.radius * 1.7, CAPTURE_RADIUS * 0.7);
+      if (d <= reach && d < best) {
+        best = d;
+        found = placed;
+      }
+    }
+    return found;
+  }
+
+  /**
+   * The area a point falls in, or null.
+   *
+   * Only the Areas view answers this: there the regions ARE the areas, so
+   * clicking the ground is an unambiguous way to focus one. A band or a lane
+   * is not an area, and pretending otherwise would focus something the user
+   * never pointed at.
+   */
+  function areaAt(gx: number, gy: number) {
+    return (
+      layout.regions.find(
+        (r) => r.areaId !== undefined && pointInPolygon(gx, gy, r.points),
+      ) ?? null
+    );
+  }
+
+  /* Activation happens on pointer-up, not via onClick.
+     The svg calls setPointerCapture on pointerdown so a pan survives the cursor
+     leaving the element -- but capture also redirects the event stream away from
+     the child circles, so their onClick never fires at all. Deciding here, from
+     how far the pointer travelled, keeps panning and tapping distinct and makes
+     touch taps work for free. */
+  function onUp(e: React.PointerEvent<SVGSVGElement>) {
+    const start = press.current;
+    press.current = null;
+    handlers.onPointerUp(e);
+    if (!start) return;
+
+    const box = e.currentTarget.getBoundingClientRect();
+    const sx = e.clientX - box.left;
+    const sy = e.clientY - box.top;
+    if (Math.hypot(sx - start.x, sy - start.y) > 5) return; // that was a drag
+
+    const g = toGraph(sx, sy);
+    const nearest = nearestNode(g.x, g.y);
+    if (nearest) {
+      activate(nearest);
+      return;
+    }
+    const area = areaAt(g.x, g.y);
+    if (area) {
+      onFocus(
+        focus?.kind === "area" && focus.areaId === area.areaId
+          ? null
+          : { kind: "area", areaId: area.areaId ?? null },
+      );
+      onSelect(null);
+    }
+  }
+
+  return (
+    <div
+      ref={frame}
+      className={`relative select-none overflow-hidden bg-bg ${className}`}
+    >
+      {layout.nodes.length === 0 ? (
+        <div className="flex h-full items-center justify-center px-6 text-center text-[13px] text-faint">
+          Nothing to draw yet.
+        </div>
+      ) : (
+        <>
+          <svg
+            className="size-full cursor-grab touch-none active:cursor-grabbing"
+            onWheel={handlers.onWheel}
+            onPointerDown={(e) => {
+              const box = e.currentTarget.getBoundingClientRect();
+              press.current = { x: e.clientX - box.left, y: e.clientY - box.top };
+              handlers.onPointerDown(e);
+            }}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={handlers.onPointerCancel}
+            onPointerLeave={onLeave}
+            role="tree"
+            aria-label="Goal graph"
+          >
+            <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+              {/* Regions tile the canvas with no gaps, so every patch of ground
+                  means something. One colour at two alphas: neighbours separate
+                  without a second hue arriving to compete with the dots. */}
+              {layout.regions.map((r) => (
+                <polygon
+                  key={r.key}
+                  points={r.points.map(([x, y]) => `${x},${y}`).join(" ")}
+                  fill={r.fill}
+                  fillOpacity={r.fillOpacity}
+                  /* The border is drawn as well as the fill. At these alphas
+                     two neighbouring washes can be genuinely hard to tell
+                     apart, and the boundary is the thing the view is claiming
+                     -- it should not depend on the fills being far enough
+                     apart to survive. */
+                  stroke="var(--color-line)"
+                  strokeWidth={0.75}
+                  strokeOpacity={0.5}
+                  className="pointer-events-none"
+                />
+              ))}
+              {layout.regions.map((r) => (
+                <text
+                  key={`label:${r.key}`}
+                  x={r.labelX}
+                  y={r.labelY}
+                  textAnchor={r.align}
+                  className="pointer-events-none fill-faint font-mono text-[9px] uppercase"
+                  style={{ letterSpacing: "0.2em" }}
+                >
+                  {r.label}
+                </text>
+              ))}
+
+              {layout.edges.map((e) => (
+                <path
+                  key={e.key}
+                  ref={(el) => void edgeEls.current.set(e.key, el)}
+                  fill="none"
+                  stroke={lit.has(e.to) ? "var(--color-pure)" : "var(--color-line)"}
+                  strokeWidth={lit.has(e.to) ? 1.1 : 0.7}
+                  opacity={lit.size > 0 ? (lit.has(e.to) ? 0.55 : 0.06) : 0.3}
+                  className="transition-opacity duration-200"
+                />
+              ))}
+
+              {layout.nodes.map((p) => (
+                <GraphMark
+                  key={p.node.key}
+                  placed={p}
+                  faded={lit.size > 0 && !lit.has(p.node.key)}
+                  lit={lit.size > 0 && lit.has(p.node.key)}
+                  markRef={(el: SVGGElement | null) => void nodeEls.current.set(p.node.key, el)}
+                  hovered={hovered === p.node.key}
+                  selected={selectedKey === p.node.key}
+                  onActivate={() => activate(p)}
+                />
+              ))}
+            </g>
+          </svg>
+
+          {/* Top-left, because Fit and Back own the bottom-right and a control
+              that changes what you are looking at should not sit in the same
+              cluster as ones that only change where you are looking. */}
+          <div
+            className="absolute left-4 top-4 flex overflow-hidden rounded-control border border-line bg-surface"
+            role="group"
+            aria-label="Arrangement"
+          >
+            {VIEW_MODES.map((v) => (
+              <button
+                key={v.mode}
+                onClick={() => chooseMode(v.mode)}
+                aria-pressed={mode === v.mode}
+                className={`px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition duration-200 ${
+                  mode === v.mode ? "bg-line/60 text-ink" : "text-muted hover:text-ink"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="absolute bottom-4 right-4 flex gap-2">
+            {focus && (
+              <button
+                onClick={() => onFocus(null)}
+                className="rounded-control border border-line bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition duration-200 hover:text-ink"
+              >
+                Back
+              </button>
+            )}
+            <button
+              onClick={fit}
+              className="rounded-control border border-line bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition duration-200 hover:text-ink"
+            >
+              Fit
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A node.
+ *
+ * A filled dot and nothing else: no outline, no hue. Size says which level it
+ * belongs to and the arrangement says everything else, so the mark itself has
+ * only one job -- being findable.
+ */
+const GraphMark = ({
+  markRef,
+  placed,
+  hovered,
+  selected,
+  faded,
+  lit,
+  onActivate,
+}: {
+  markRef: (el: SVGGElement | null) => void;
+  placed: PlacedNode;
+  hovered: boolean;
+  selected: boolean;
+  faded: boolean;
+  lit: boolean;
+  onActivate: () => void;
+}) => {
+  const { node, radius } = placed;
+  const scale = hovered || selected ? 1.5 : 1;
+  const r = radius * scale;
+
+  /* Goals are always named. Deeper names would collide at rest -- there are
+     several per goal and they sit close together -- so they appear only once
+     that branch is pointed at or lit. */
+  const showLabel = placed.depth === 1 || hovered || selected || lit;
+
+  return (
+    <g
+      ref={markRef}
+      /* Depth is carried by weight as well as size: goals speak first,
+         trackables recede, and nothing has to be hidden to keep it readable.
+         An inferred value reads as less solid, which is the one flag left on
+         the mark itself now that there is no stroke to dash (D3). */
+      opacity={
+        (faded ? 0.14 : placed.depth === 1 ? 1 : placed.depth === 2 ? 0.78 : 0.58) *
+        (node.flags?.parked ? 0.5 : 1) *
+        (node.flags?.estimated ? 0.72 : 1)
+      }
+      className="transition-opacity duration-200"
+    >
+      {/* Selection is a halo set well clear of the dot, not an outline on it. */}
+      {selected && (
+        <circle r={r + 5} fill="none" stroke="var(--color-pure)" strokeWidth={1} opacity={0.55} />
+      )}
+
+      <circle r={r} fill={NODE_FILL} className="transition-[r] duration-200" />
+
+      {/* A real target, so the graph stays keyboard-reachable. */}
+      <circle
+        r={Math.max(r, 13)}
+        fill="transparent"
+        tabIndex={0}
+        role="treeitem"
+        aria-label={`${node.kind}: ${node.title}`}
+        aria-selected={selected}
+        onClick={onActivate}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onActivate();
+          }
+        }}
+        className="cursor-pointer outline-none focus-visible:stroke-pure focus-visible:[stroke-width:2]"
+      />
+
+      {showLabel && (
+        <text
+          x={0}
+          y={r + 12}
+          textAnchor="middle"
+          className={`pointer-events-none text-[10px] transition-opacity duration-200 ${
+            hovered || selected ? "fill-ink" : "fill-muted"
+          }`}
+        >
+          {node.title.length > 22 ? `${node.title.slice(0, 21)}…` : node.title}
+        </text>
+      )}
+    </g>
+  );
+};

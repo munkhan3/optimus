@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from optimus.metrics.pace import empirical_pace
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import Milestone, ProgressCheckRow, Trackable, WorkSession
 from ..repo import loader
 from ..schemas import SessionEnd, SessionRetroactive, SessionStart

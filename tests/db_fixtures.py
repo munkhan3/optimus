@@ -28,6 +28,7 @@ TEST_DB_URL = os.environ.get(
 TEST_TOKEN = "test-token"
 
 TABLES = (
+    "auth_session", "app_user",
     "plan_item", "daily_plan", "progress_check", "work_session",
     "weekly_commitment", "baseline", "open_gap", "task", "trackable",
     "milestone", "goal_budget", "capacity", "goal",
@@ -88,6 +89,9 @@ def _clean(_migrated) -> Iterator[None]:
         conn.execute(
             text(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE")
         )
+    from optimus.api.auth import reset_legacy_bridge
+
+    reset_legacy_bridge()
     yield
 
 

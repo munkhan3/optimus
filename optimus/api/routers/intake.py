@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..llm import intake as intake_llm
 from ..llm.client import LLMUnavailable
 from ..llm.ingest import IngestProposal, gaps_sorted

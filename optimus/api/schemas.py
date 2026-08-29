@@ -12,7 +12,34 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
+# -------------------------------------------------------------------- accounts
+
+
+class AccountCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class AccountLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AccountDelete(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
 # ------------------------------------------------------------------ goal tree
+
+
+class AreaCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: str | None = None
+
+
+class AreaUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    color: str | None = None
 
 
 class GoalCreate(BaseModel):
@@ -27,6 +54,7 @@ class GoalCreate(BaseModel):
     pace_mode: str = "carry_forward"
     reset_period_days: int | None = None
     stakes: int = Field(default=3, ge=1, le=5)
+    area_id: int | None = None
 
 
 class GoalUpdate(BaseModel):
@@ -38,6 +66,9 @@ class GoalUpdate(BaseModel):
     pace_mode: str | None = None
     reset_period_days: int | None = None
     stakes: int | None = Field(default=None, ge=1, le=5)
+    # Sent explicitly as null to un-file a goal; update_goal uses
+    # exclude_unset, so an omitted key still means "leave it alone".
+    area_id: int | None = None
     status: str | None = None
     verified: bool | None = None
 

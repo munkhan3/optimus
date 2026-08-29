@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import Goal, Milestone
 from ..repo.write_rules import check_activation
 from ..schemas import GoalCreate, GoalUpdate, MilestoneCreate
@@ -35,7 +35,8 @@ def create_goal(body: GoalCreate, db: Session = Depends(get_session)) -> dict:
 
 @router.get("/goals")
 def list_goals(db: Session = Depends(get_session)) -> list[dict]:
-    return [g.model_dump() for g in db.exec(select(Goal).order_by(Goal.created_at)).all()]
+    # created_at ties freely (see tree.py); id keeps the order stable.
+    return [g.model_dump() for g in db.exec(select(Goal).order_by(Goal.created_at, Goal.id)).all()]
 
 
 @router.patch("/goals/{goal_id}")
@@ -67,7 +68,7 @@ def create_milestone(body: MilestoneCreate, db: Session = Depends(get_session)) 
 def list_milestones(
     goal_id: int | None = None, db: Session = Depends(get_session)
 ) -> list[dict]:
-    stmt = select(Milestone).order_by(Milestone.created_at)
+    stmt = select(Milestone).order_by(Milestone.created_at, Milestone.id)
     if goal_id is not None:
         stmt = stmt.where(Milestone.goal_id == goal_id)
     return [m.model_dump() for m in db.exec(stmt).all()]

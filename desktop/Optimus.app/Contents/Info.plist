@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Optimus</string>
+  <key>CFBundleDisplayName</key><string>Optimus</string>
+  <key>CFBundleIdentifier</key><string>com.munkhan.optimus</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleExecutable</key><string>Optimus</string>
+  <key>CFBundleIconFile</key><string>Optimus</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <!-- Where the app finds the product. Baked at build time; rerun build.sh if
+       the checkout ever moves. -->
+  <key>OptimusRepoRoot</key><string>/Users/munkhan/Projects/optimus</string>
+  <!-- Talks to localhost over plain HTTP, which ATS blocks by default. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
+</dict>
+</plist>

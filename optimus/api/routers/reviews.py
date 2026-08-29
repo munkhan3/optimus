@@ -23,7 +23,7 @@ from optimus.metrics.progress import remaining_units
 from optimus.metrics.rebaseline import evaluate_exploratory, evaluate_metered
 from optimus.metrics.stall import detect_stall
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import (
     Capacity,
     Goal,

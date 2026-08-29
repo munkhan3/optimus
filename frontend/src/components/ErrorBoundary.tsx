@@ -25,22 +25,22 @@ export class ErrorBoundary extends Component<
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="rounded-2xl bg-bad/10 p-4">
-        <div className="text-sm font-semibold text-bad">
+      <div className="rounded-card bg-bad/8 p-5">
+        <div className="text-body-sm font-medium text-bad">
           {this.props.label ?? "This view"} hit an error
         </div>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted">
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
           The rest of the app still works — switch tabs and come back. If it keeps
           happening the message below is what to report.
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-bg p-2.5 text-[11px] text-faint">
+        <pre className="mt-3 overflow-x-auto rounded-control bg-abyss p-3 font-mono text-[11px] text-faint">
           {this.state.error.message}
         </pre>
         <button
           onClick={() => this.setState({ error: null })}
-          className="mt-2 text-xs font-medium text-accent underline underline-offset-2"
+          className="mt-3 text-[13px] font-medium text-ink underline underline-offset-4"
         >
-          try again
+          Try Again
         </button>
       </div>
     );

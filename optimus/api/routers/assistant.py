@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..llm import assistant as assistant_llm
 from ..llm import ingest as ingest_llm
 from ..llm.client import LLMUnavailable

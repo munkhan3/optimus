@@ -136,10 +136,10 @@ export function GoalTree({
     <div
       ref={frame}
       // select-none: dragging to pan must not sweep-select every label.
-      className={`relative select-none overflow-hidden rounded-2xl bg-bg ${className}`}
+      className={`relative select-none overflow-hidden rounded-card bg-abyss ${className}`}
     >
       {roots.length === 0 ? (
-        <div className="flex h-full items-center justify-center px-6 text-center text-xs text-faint">
+        <div className="flex h-full items-center justify-center px-6 text-center text-[13px] text-faint">
           Your goals will appear here as you talk.
         </div>
       ) : (
@@ -205,7 +205,7 @@ export function GoalTree({
 
           <button
             onClick={fit}
-            className="absolute bottom-3 right-3 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] font-medium text-muted hover:text-ink"
+            className="absolute bottom-3 right-3 rounded-control border border-line bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted hover:text-ink"
           >
             Fit
           </button>
@@ -230,32 +230,37 @@ function NodeCard({
 }) {
   const f = node.flags ?? {};
   const ring = selected
-    ? "ring-2 ring-accent"
+    ? "ring-2 ring-pure"
     : isNew
-      ? "ring-2 ring-accent/60"
+      ? "ring-2 ring-iris"
       : f.estimated
         ? "ring-1 ring-warn/50"
         : "ring-1 ring-line";
 
+  /* A node was a div with an onClick: unreachable by keyboard, invisible to a
+     screen reader, and the tree is the one screen whose entire content is
+     nodes. Making it a button costs nothing and makes the view navigable. */
   return (
-    <div
+    <button
+      type="button"
       onClick={() => onSelect?.(node)}
+      aria-pressed={selected}
       style={{
         width: NODE_W,
         height: NODE_H,
         animation: isNew ? "nodeIn 420ms cubic-bezier(0.2,0.8,0.2,1)" : undefined,
       }}
-      className={`flex cursor-pointer flex-col justify-center rounded-xl bg-surface px-3 py-2 transition ${ring} ${
+      className={`flex flex-col justify-center rounded-card bg-surface px-3 py-2 text-left transition duration-200 ease-out ${ring} ${
         f.parked ? "opacity-45" : ""
       }`}
     >
       <div className="flex items-center gap-1.5">
         <span className="section-label">{KIND_LABEL[node.kind]}</span>
-        {f.exploratory && <span className="text-[10px] text-accent">exploratory</span>}
+        {f.exploratory && <span className="text-[10px] text-muted">exploratory</span>}
         {f.parked && <span className="text-[10px] text-faint">parked</span>}
       </div>
 
-      <div className="truncate text-[13px] font-semibold leading-tight text-ink">
+      <div className="truncate text-[13px] font-medium leading-tight text-ink">
         {node.title}
       </div>
 
@@ -267,12 +272,12 @@ function NodeCard({
         <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-raised">
           {node.fraction !== null && (
             <div
-              className="h-1 rounded-full bg-accent"
+              className="h-1 rounded-full bg-iris"
               style={{ width: `${Math.min(100, Math.max(0, node.fraction * 100))}%` }}
             />
           )}
         </div>
       )}
-    </div>
+    </button>
   );
 }

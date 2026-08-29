@@ -17,7 +17,7 @@ from datetime import UTC, date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import Capacity, Goal, GoalBudget
 from ..repo.loader import week_start
 from ..schemas import BudgetSet, CapacityCreate

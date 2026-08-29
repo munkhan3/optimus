@@ -354,11 +354,15 @@ def test_tree_returns_the_hierarchy(client: TestClient):
 
 
 def test_tree_of_an_empty_database_is_empty_not_an_error(client: TestClient):
-    assert client.get("/api/tree").json() == {"goals": []}
+    assert client.get("/api/tree").json() == {"areas": [], "goals": []}
 
 
 def test_tree_does_not_query_per_node(client: TestClient, db_session):
-    """Three queries regardless of size -- this renders a diagram, not a report."""
+    """A fixed number of queries regardless of size -- a diagram, not a report.
+
+    The count matters less than its independence from node count, so this
+    measures the same request at two different sizes and asserts they agree.
+    """
     for i in range(4):
         p = _proposal(goals=[_goal(key=f"g{i}", title=f"Goal {i}")])
         client.post("/api/intake/approve", json={"proposal": p.model_dump()})
@@ -381,4 +385,20 @@ def test_tree_does_not_query_per_node(client: TestClient, db_session):
         event.remove(engine, "before_cursor_execute", count)
 
     assert len(tree["goals"]) == 4
-    assert len(queries) == 3, f"expected 3 selects, got {len(queries)}"
+    small = len(queries)
+
+    for i in range(4, 12):
+        p = _proposal(goals=[_goal(key=f"g{i}", title=f"Goal {i}")])
+        client.post("/api/intake/approve", json={"proposal": p.model_dump()})
+
+    queries.clear()
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        tree = client.get("/api/tree").json()
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+
+    assert len(tree["goals"]) == 12
+    assert len(queries) == small, (
+        f"query count scaled with node count: {small} at 4 goals, {len(queries)} at 12"
+    )

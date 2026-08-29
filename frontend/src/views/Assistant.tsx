@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, ApiError } from "../lib/api";
-import { Button, Card, Tag } from "../components/Primitives";
+import { Banner, Button, Card, Tag } from "../components/Primitives";
 
 /**
  * §26: read-only chat over structured state.
@@ -42,7 +42,7 @@ export function Assistant() {
   return (
     <div className="space-y-3">
       <Card>
-        <div className="text-xs text-muted">
+        <div className="text-[13px] leading-relaxed text-muted">
           Reads your data; cannot change it. There are no write tools in v0 — deadline changes and
           scope cuts stay yours.
         </div>
@@ -50,11 +50,11 @@ export function Assistant() {
 
       {turns.map((turn, i) => (
         <div key={i} className="space-y-2">
-          <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-white">
+          <div className="ml-auto max-w-[85%] rounded-card rounded-br-md bg-raised px-4 py-2.5 text-body-sm text-ink">
             {turn.question}
           </div>
           <Card>
-            <div className="whitespace-pre-wrap text-sm leading-relaxed">{turn.answer}</div>
+            <div className="whitespace-pre-wrap text-body-sm leading-relaxed">{turn.answer}</div>
             {turn.tools.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {/* Show what the answer was actually based on -- an assistant
@@ -68,7 +68,7 @@ export function Assistant() {
         </div>
       ))}
 
-      {error && <div className="rounded-xl bg-bad/8 px-3 py-2 text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
 
       <div className="flex gap-2">
         <input
@@ -76,7 +76,7 @@ export function Assistant() {
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && ask()}
           placeholder="Why is this first? Am I going to make December?"
-          className="min-h-11 flex-1 rounded-xl bg-surface px-3.5 text-sm text-ink outline-none placeholder:text-faint focus:ring-1 focus:ring-accent"
+          className="min-h-11 flex-1 rounded-control border border-line bg-abyss px-3.5 text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted"
         />
         <Button onClick={ask} disabled={busy || !question.trim()}>
           {busy ? "…" : "Ask"}

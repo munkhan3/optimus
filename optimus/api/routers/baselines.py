@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 
 from optimus.metrics.rebaseline import FOUR_OPTIONS
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import Baseline
 from ..schemas import BaselineCreate, RebaselineRequest
 

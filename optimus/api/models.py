@@ -39,6 +39,9 @@ from sqlalchemy import (
     Column,
     DateTime,
     Index,
+    ForeignKey,
+    Integer,
+    String,
     UniqueConstraint,
     text,
 )
@@ -84,6 +87,72 @@ TZ = DateTime(timezone=True)
 # own terms.
 FALSE_DEFAULT = {"server_default": text("false")}
 ZERO_DEFAULT = {"server_default": text("0")}
+USER_ID_DEFAULT = text("NULLIF(current_setting('app.user_id', true), '')::integer")
+
+
+def owner_field():
+    """Owner is assigned by Postgres from the authenticated request context."""
+    return Field(
+        default=None,
+        sa_column=Column(
+            "user_id",
+            Integer,
+            ForeignKey("app_user.id", ondelete="CASCADE"),
+            nullable=True,
+            index=True,
+            server_default=USER_ID_DEFAULT,
+        ),
+    )
+
+
+# ------------------------------------------------------------------- accounts
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "app_user"
+
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(sa_column=Column(String(320), unique=True, index=True, nullable=False))
+    password_hash: str
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+
+
+class AuthSession(SQLModel, table=True):
+    __tablename__ = "auth_session"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="app_user.id", index=True)
+    token_hash: str = Field(sa_column=Column(String(64), unique=True, index=True, nullable=False))
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+    expires_at: datetime = Field(sa_type=TZ)
+
+
+# ---------------------------------------------------------------------- area
+
+
+class Area(SQLModel, table=True):
+    """An area of life: professional, health, hobbies.
+
+    Deliberately NOT a Vision. §9 makes a vision a planning entity -- it sits at
+    level 1 of the goal graph, carries a definition of done, and is the thing a
+    goal compiles up into. An area carries none of that and never competes for
+    time; it exists so the graph can be read at a glance. Conflating the two
+    would have given every "Health" label a definition of done to satisfy.
+    """
+
+    __tablename__ = "area"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="area_user_name_unique"),
+        CheckConstraint("length(trim(name)) > 0", name="area_name_not_blank"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
+    name: str
+    # Null means "derive it" -- see the chromatic set in index.css. Stored only
+    # if the user ever overrides it.
+    color: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
 
 
 # ---------------------------------------------------------------------- goal
@@ -127,7 +196,19 @@ class Goal(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     parent_id: int | None = Field(default=None, foreign_key="goal.id", index=True)
+    # SET NULL on delete: removing an area un-files its goals, never deletes them.
+    area_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            "area_id",
+            Integer,
+            ForeignKey("area.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        ),
+    )
     title: str
     description: str | None = None
     kind: str
@@ -158,6 +239,7 @@ class Milestone(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     goal_id: int = Field(foreign_key="goal.id", index=True)
     title: str
     definition_of_done: str
@@ -187,6 +269,7 @@ class Trackable(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     milestone_id: int = Field(foreign_key="milestone.id", index=True)
     title: str
     unit: str
@@ -211,6 +294,7 @@ class Task(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
     description: str
@@ -228,9 +312,11 @@ class Task(SQLModel, table=True):
 
 class Capacity(SQLModel, table=True):
     __tablename__ = "capacity"
+    __table_args__ = (UniqueConstraint("user_id", "week_start", name="capacity_user_week_unique"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    week_start: date = Field(unique=True, index=True)
+    user_id: int | None = owner_field()
+    week_start: date = Field(index=True)
     available_hours: float
     session_minutes: int = 25
 
@@ -243,6 +329,7 @@ class GoalBudget(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     capacity_id: int = Field(foreign_key="capacity.id", index=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
     budgeted_sessions: int
@@ -275,6 +362,7 @@ class WeeklyCommitment(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     capacity_id: int = Field(foreign_key="capacity.id", index=True)
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id")
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
@@ -310,6 +398,7 @@ class WorkSession(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     task_id: int | None = Field(default=None, foreign_key="task.id")
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
@@ -345,6 +434,7 @@ class ProgressCheckRow(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
     self_assessed_pct: float
@@ -390,6 +480,7 @@ class Baseline(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id", index=True)
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
     version: int
@@ -414,6 +505,7 @@ class OpenGap(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     goal_id: int | None = Field(default=None, foreign_key="goal.id", index=True)
     milestone_id: int | None = Field(default=None, foreign_key="milestone.id", index=True)
     # FIX 2: total_units lives on trackable, and AC18 requires a gap whenever
@@ -431,9 +523,11 @@ class OpenGap(SQLModel, table=True):
 
 class DailyPlan(SQLModel, table=True):
     __tablename__ = "daily_plan"
+    __table_args__ = (UniqueConstraint("user_id", "plan_date", name="daily_plan_user_date_unique"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    plan_date: date = Field(unique=True, index=True)
+    user_id: int | None = owner_field()
+    plan_date: date = Field(index=True)
     generated_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
     capacity_minutes: int
     carried_shortfall: float | None = None  # spread, never dumped (D9)
@@ -458,6 +552,7 @@ class PlanItem(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
     daily_plan_id: int = Field(foreign_key="daily_plan.id", index=True)
     task_id: int | None = Field(default=None, foreign_key="task.id")
     trackable_id: int | None = Field(default=None, foreign_key="trackable.id")

@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from ..db import get_session
+from ..auth import get_user_session as get_session
 from ..models import Baseline, Milestone, Trackable
 from ..repo import metrics_service
 from ..repo.write_rules import gap_for_estimated_units
@@ -47,7 +47,7 @@ def create_trackable(body: TrackableCreate, db: Session = Depends(get_session)) 
 def list_trackables(db: Session = Depends(get_session)) -> list[dict]:
     """Every trackable with its full metric view -- the M1 screen (§28)."""
     today = _today()
-    rows = db.exec(select(Trackable).order_by(Trackable.created_at)).all()
+    rows = db.exec(select(Trackable).order_by(Trackable.created_at, Trackable.id)).all()
     return [metrics_service.trackable_view(db, t, today) for t in rows]
 
 

@@ -1,7 +1,7 @@
 """Optimus API.
 
-Every route below /api requires the single-user bearer token (§19). The built
-frontend is served from / so one Fly app serves both.
+All data routes require an account session. The built frontend is served from /
+so one Fly app serves both.
 """
 
 from __future__ import annotations
@@ -13,10 +13,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .auth import require_token
+from .auth import require_user
 from .db import get_engine
 from .routers import (
+    areas,
     assistant,
+    auth,
     baselines,
     capacity,
     goals,
@@ -38,10 +40,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.include_router(auth.router)
+
 for router in (
     trackables.router,
     sessions.router,
     goals.router,
+    areas.router,
     baselines.router,
     capacity.router,
     planning.router,
@@ -50,7 +55,7 @@ for router in (
     intake.router,
     tree.router,
 ):
-    app.include_router(router, dependencies=[Depends(require_token)])
+    app.include_router(router)
 
 
 @app.get("/api/health", tags=["meta"])
@@ -61,7 +66,7 @@ def health() -> dict:
     return {"status": "ok", "database": "reachable"}
 
 
-@app.get("/api/config", tags=["meta"], dependencies=[Depends(require_token)])
+@app.get("/api/config", tags=["meta"], dependencies=[Depends(require_user)])
 def config() -> dict:
     """The tunables the UI needs, so no constant is duplicated in the frontend."""
     c = get_metrics_config()

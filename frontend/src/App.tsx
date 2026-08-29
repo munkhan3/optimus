@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, getToken, setToken } from "./lib/api";
+import { api, ApiError, clearToken, getToken, setToken } from "./lib/api";
 import type { PlanItem, TrackableView, WorkSession } from "./lib/types";
+import { localDate } from "./lib/format";
 import { SessionBar } from "./components/SessionBar";
-import { Button, Card, Field } from "./components/Primitives";
+import { Banner, Button, Card, Field } from "./components/Primitives";
 import { Shell, type Tab } from "./components/Shell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Trackables } from "./views/Trackables";
@@ -12,6 +13,7 @@ import { Review } from "./views/Review";
 import { Tree } from "./views/Tree";
 import { Assistant } from "./views/Assistant";
 import { Intake } from "./views/Intake";
+import { AccountPanel } from "./components/AccountPanel";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -25,6 +27,15 @@ export default function App() {
   const [capBinding, setCapBinding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  /// Both ways out of an account land here: the token is gone, the panel
+  /// closes, and the gate comes back.
+  const leaveAccount = useCallback(() => {
+    clearToken();
+    setAccountOpen(false);
+    setAuthed(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!authed) return;
@@ -42,7 +53,7 @@ export default function App() {
 
       // A missing plan is normal (nothing committed yet), not an error.
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localDate();
         const day = await api.get<{ items: PlanItem[] }>(`/api/planning/day/${today}`);
         setPlan(day.items);
         setCapBinding(
@@ -52,7 +63,10 @@ export default function App() {
         setPlan([]);
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setAuthed(false);
+      if (e instanceof ApiError && e.status === 401) {
+        clearToken();
+        setAuthed(false);
+      }
       else setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -63,26 +77,38 @@ export default function App() {
     void refresh();
   }, [refresh]);
 
-  if (!authed) return <TokenGate onSaved={() => setAuthed(true)} />;
+  if (!authed) return <AccountGate onSaved={() => setAuthed(true)} />;
 
   // §2.1: compilation is the expensive part, and making a new user hand-build
   // their graph through forms front-loads exactly the work the system exists to
   // absorb. An empty database opens into the conversation instead.
   if (hasGoals === false) {
     return (
-      <Shell tab="intake" setTab={setTab}>
-        <ErrorBoundary label="The intake view">
-          <Intake onApproved={refresh} />
-        </ErrorBoundary>
-      </Shell>
+      <>
+        <Shell tab="intake" setTab={setTab} onAccount={() => setAccountOpen(true)}>
+          <ErrorBoundary label="The intake view">
+            <Intake onApproved={refresh} />
+          </ErrorBoundary>
+        </Shell>
+        {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onDeleted={leaveAccount} onSignedOut={leaveAccount} />}
+      </>
     );
   }
 
   return (
     <>
-      <Shell tab={tab} setTab={setTab}>
+      <Shell
+        tab={tab}
+        setTab={setTab}
+        sessionOpen={!!session}
+        /* The map is the view; everything else is a column of cards. */
+        bleed={tab === "tree"}
+        onAccount={() => setAccountOpen(true)}
+      >
         {error && (
-          <div className="mb-4 rounded-xl bg-bad/10 px-4 py-3 text-xs text-bad">{error}</div>
+          <div className="mb-4">
+            <Banner>{error}</Banner>
+          </div>
         )}
 
         <ErrorBoundary key={tab} label={`The ${tab} view`}>
@@ -94,12 +120,13 @@ export default function App() {
               onChanged={refresh}
               onGenerate={refresh}
               busy={busy}
+              sessionOpen={!!session}
             />
           )}
           {tab === "work" && (
             <Trackables trackables={trackables} onStarted={refresh} busy={busy || !!session} />
           )}
-          {tab === "tree" && <Tree />}
+          {tab === "tree" && <Tree onStarted={refresh} sessionOpen={!!session} />}
           {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
           {tab === "review" && <Review />}
           {tab === "ask" && <Assistant />}
@@ -113,39 +140,73 @@ export default function App() {
           onEnded={refresh}
         />
       )}
+      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onDeleted={leaveAccount} onSignedOut={leaveAccount} />}
     </>
   );
 }
 
-/** §19: one token, pasted once. There is no login because there is one user. */
-function TokenGate({ onSaved }: { onSaved: () => void }) {
-  const [value, setValue] = useState("");
+function AccountGate({ onSaved }: { onSaved: () => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function submit() {
+    if (!email.trim() || !password || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const result = await api.post<{ token: string }>(
+        mode === "login" ? "/api/auth/login" : "/api/auth/register",
+        { email, password },
+      );
+      setToken(result.token);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm items-center px-5">
       <Card className="w-full">
-        <div className="text-lg font-semibold tracking-tight">Optimus</div>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted">
-          Paste your access token. Single user, so this is the only credential — it is stored on
-          this device.
+        <div className="display text-heading">Optimus</div>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          {mode === "login" ? "Sign in to continue your operating system." : "Create an account to start building your system."}
         </p>
         <Field
-          label="Token"
+          label="Email"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="you@example.com"
+          className="mt-5"
+        />
+        <Field
+          label="Password"
           type="password"
-          value={value}
-          onChange={setValue}
-          placeholder="••••••••"
+          value={password}
+          onChange={setPassword}
+          placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
           className="mt-4"
         />
+        {error && <div className="mt-4"><Banner>{error}</Banner></div>}
         <Button
           className="mt-4 w-full"
-          disabled={!value.trim()}
-          onClick={() => {
-            setToken(value);
-            onSaved();
-          }}
+          disabled={!email.trim() || !password}
+          pending={pending}
+          onClick={submit}
         >
-          Continue
+          {mode === "login" ? "Sign In" : "Create Account"}
         </Button>
+        <button
+          className="mt-4 w-full text-center text-[12px] text-faint hover:text-ink"
+          onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}
+        >
+          {mode === "login" ? "New Here? Create an Account" : "Already Have an Account? Sign In"}
+        </button>
       </Card>
     </div>
   );

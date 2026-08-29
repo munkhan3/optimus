@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import type { Goal, TrackableView } from "../lib/types";
-import { num } from "../lib/format";
-import { Button, Card, Tag } from "../components/Primitives";
+import { localDate, mondayOf, num } from "../lib/format";
+import { Banner, Button, Card, Field, SectionLabel, Tag } from "../components/Primitives";
+import { type Area, areaColors, UNASSIGNED_COLOR } from "../lib/areas";
 
 /**
  * Setup and weekly planning: the goal graph, capacity, and the commitment.
@@ -44,6 +45,7 @@ export function Plan({
   onChanged: () => void;
 }) {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
   const [capacity, setCapacity] = useState<CapacitySummary | null>(null);
   const [ranking, setRanking] = useState<RankRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +53,7 @@ export function Plan({
   async function load() {
     try {
       setGoals(await api.get<Goal[]>("/api/goals"));
+      setAreas(await api.get<Area[]>("/api/areas"));
       setCapacity(await api.get<CapacitySummary | null>("/api/capacity/current"));
       setRanking(await api.get<RankRow[]>("/api/planning/ranking"));
     } catch (e) {
@@ -69,11 +72,12 @@ export function Plan({
 
   return (
     <div className="space-y-4">
-      {error && <div className="rounded-xl bg-bad/8 px-3 py-2 text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
 
       <CapacitySection capacity={capacity} goals={goals} onChanged={refreshAll} />
       <RankingSection ranking={ranking} onChanged={refreshAll} />
-      <GoalsSection goals={goals} onChanged={refreshAll} />
+      <AreasSection areas={areas} onChanged={refreshAll} />
+      <GoalsSection goals={goals} areas={areas} onChanged={refreshAll} />
       <RebaselineSection trackables={trackables} onChanged={refreshAll} />
     </div>
   );
@@ -91,24 +95,22 @@ function CapacitySection({
   onChanged: () => void;
 }) {
   const [hours, setHours] = useState("10");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function mondayOf(d: Date): string {
-    const copy = new Date(d);
-    copy.setDate(copy.getDate() - ((copy.getDay() + 6) % 7));
-    return copy.toISOString().slice(0, 10);
-  }
 
   async function declare() {
     setError(null);
+    setBusy(true);
     try {
       await api.post("/api/capacity", {
-        week_start: mondayOf(new Date()),
+        week_start: mondayOf(),
         available_hours: Number(hours),
       });
       onChanged();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -128,7 +130,7 @@ function CapacitySection({
   if (!capacity) {
     return (
       <Card>
-        <SectionTitle>This week's capacity</SectionTitle>
+        <SectionLabel>This Week's Capacity</SectionLabel>
         <p className="mt-1.5 text-xs leading-relaxed text-muted">
           How many focus hours actually exist this week — after coursework, work, sleep, and life.
           Declared, not guessed: everything downstream divides this number.
@@ -138,11 +140,11 @@ function CapacitySection({
             type="number"
             value={hours}
             onChange={(e) => setHours(e.target.value)}
-            className="min-h-11 w-24 rounded-xl border border-line bg-raised px-3 text-sm"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted w-24 px-3"
           />
-          <Button onClick={declare}>Declare hours</Button>
+          <Button onClick={declare} pending={busy}>Declare Hours</Button>
         </div>
-        {error && <div className="mt-2 text-xs text-bad">{error}</div>}
+        {error && <div className="mt-3"><Banner>{error}</Banner></div>}
       </Card>
     );
   }
@@ -151,11 +153,11 @@ function CapacitySection({
 
   return (
     <Card>
-      <SectionTitle>This week</SectionTitle>
+      <SectionLabel>This Week</SectionLabel>
       <div className="mt-2 flex items-baseline gap-3 text-sm">
         <span className="text-2xl font-bold">{capacity.sessions_available}</span>
         <span className="text-muted">sessions available</span>
-        {capacity.over_committed && <Tag tone="bad">over-committed</Tag>}
+        {capacity.over_committed && <Tag tone="bad">Over-Committed</Tag>}
       </div>
 
       {/* §11: the portfolio is explicit. Every increase is visibly taken from
@@ -175,14 +177,14 @@ function CapacitySection({
               </div>
               <button
                 onClick={() => setBudget(goal.id, value - 1)}
-                className="size-9 rounded-lg border border-line text-lg leading-none"
+                className="size-9 rounded-control border border-line text-subheading leading-none transition duration-200 ease-out hover:bg-raised disabled:opacity-40"
               >
                 −
               </button>
               <span className="w-8 text-center font-mono text-sm">{value}</span>
               <button
                 onClick={() => setBudget(goal.id, value + 1)}
-                className="size-9 rounded-lg border border-line text-lg leading-none"
+                className="size-9 rounded-control border border-line text-subheading leading-none transition duration-200 ease-out hover:bg-raised disabled:opacity-40"
               >
                 +
               </button>
@@ -199,7 +201,7 @@ function CapacitySection({
           ? `${capacity.sessions_unallocated} unspent`
           : `${-capacity.sessions_unallocated} more than you have`}
       </div>
-      {error && <div className="mt-2 text-xs text-bad">{error}</div>}
+      {error && <div className="mt-3"><Banner>{error}</Banner></div>}
     </Card>
   );
 }
@@ -216,13 +218,13 @@ function RankingSection({
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   function key(r: RankRow) {
     return r.trackable_id ? `t${r.trackable_id}` : `m${r.milestone_id}`;
   }
 
   async function commit() {
-    setError(null);
     const items = ranking
       .map((r) => ({
         trackable_id: r.trackable_id ?? undefined,
@@ -230,14 +232,20 @@ function RankingSection({
         committed_sessions: Number(sessions[key(r)] ?? 0),
       }))
       .filter((i) => i.committed_sessions > 0);
+    /* Guard before the busy flag, not after: returning early past setBusy(true)
+       left the button spinning with nothing in flight. */
     if (items.length === 0) return;
+    setError(null);
+    setBusy(true);
     try {
       await api.post("/api/planning/commit", items);
-      await api.post("/api/planning/day");
+      await api.post(`/api/planning/day?plan_date=${localDate()}`);
       setDone(true);
       onChanged();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -245,7 +253,7 @@ function RankingSection({
 
   return (
     <Card>
-      <SectionTitle>Commit the week</SectionTitle>
+      <SectionLabel>Commit the Week</SectionLabel>
       <p className="mt-1.5 text-xs leading-relaxed text-muted">
         Ranked once, now. The daily plan redistributes these without re-scoring — that stability is
         what keeps the plan believable.
@@ -267,54 +275,195 @@ function RankingSection({
               placeholder="0"
               value={sessions[key(r)] ?? ""}
               onChange={(e) => setSessions((s) => ({ ...s, [key(r)]: e.target.value }))}
-              className="min-h-11 w-16 rounded-xl border border-line bg-raised px-2 text-center text-sm"
+              className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted w-16 px-2 text-center"
             />
           </div>
         ))}
       </div>
 
-      <Button className="mt-3 w-full" onClick={commit}>
-        Commit and generate today
+      <Button className="mt-3 w-full" onClick={commit} pending={busy}>
+        Commit and Generate Today
       </Button>
       {done && <div className="mt-2 text-xs text-good">Committed. Today's plan is ready.</div>}
-      {error && <div className="mt-2 text-xs text-bad">{error}</div>}
+      {error && <div className="mt-3"><Banner>{error}</Banner></div>}
+    </Card>
+  );
+}
+
+
+/* --------------------------------------------------------------------- areas */
+
+const SELECT_CLASS =
+  "min-h-11 w-full rounded-control border border-line bg-abyss px-3 text-body-sm text-ink " +
+  "outline-none focus:border-muted mt-1.5";
+
+/** "Unassigned" is a real, selectable option: unfiled work must stay visible. */
+function AreaSelect({
+  areas,
+  value,
+  onChange,
+  className = "",
+}: {
+  areas: Area[];
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${SELECT_CLASS} ${className}`}
+    >
+      <option value="">Unassigned</option>
+      {areas.map((a) => (
+        <option key={a.id} value={String(a.id)}>
+          {a.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * Areas are taxonomy, so this section is deliberately thin: a name, and how many
+ * goals sit in it. Deleting one un-files its goals rather than deleting them,
+ * which is why the copy says so out loud -- a destructive-looking action that
+ * is not destructive should say which it is.
+ */
+function AreasSection({ areas, onChanged }: { areas: Area[]; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const colors = areaColors(areas);
+
+  async function run(fn: () => Promise<unknown>) {
+    setError(null);
+    setBusy(true);
+    try {
+      await fn();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <SectionLabel>Areas of Life</SectionLabel>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
+        >
+          {open ? "Close" : "Add"}
+        </button>
+      </div>
+
+      <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        How the goal graph is grouped. An area is a label, not a goal — it has no deadline and
+        never competes for time.
+      </p>
+
+      <div className="mt-3 space-y-1.5">
+        {areas.map((a) => (
+          <div key={a.id} className="flex items-center gap-3 rounded-control bg-abyss px-3 py-2.5">
+            <span
+              aria-hidden="true"
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ background: colors.get(a.id) }}
+            />
+            <span className="min-w-0 flex-1 truncate text-body-sm">{a.name}</span>
+            <span className="font-mono text-[11px] text-faint">
+              {a.goal_count ?? 0} {(a.goal_count ?? 0) === 1 ? "goal" : "goals"}
+            </span>
+            <button
+              disabled={busy}
+              onClick={() => void run(() => api.delete(`/api/areas/${a.id}`))}
+              className="text-[11px] text-faint underline underline-offset-4 transition duration-200 ease-out hover:text-bad disabled:opacity-40"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {areas.length === 0 && (
+          <div className="text-[13px] text-muted">
+            No areas yet — every goal shows as unassigned.
+          </div>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-2 border-t border-line pt-3">
+          <Field label="Name" value={name} onChange={setName} placeholder="Professional" />
+          <Button
+            className="w-full"
+            disabled={!name.trim()}
+            pending={busy}
+            onClick={() =>
+              void run(async () => {
+                await api.post("/api/areas", { name: name.trim() });
+                setName("");
+              })
+            }
+          >
+            Create Area
+          </Button>
+          <p className="text-[11px] text-muted">
+            Removing an area later un-files its goals. It never deletes them.
+          </p>
+        </div>
+      )}
+      {error && <Banner>{error}</Banner>}
     </Card>
   );
 }
 
 /* --------------------------------------------------------------------- goals */
 
-function GoalsSection({ goals, onChanged }: { goals: Goal[]; onChanged: () => void }) {
+function GoalsSection({
+  goals,
+  areas,
+  onChanged,
+}: {
+  goals: Goal[];
+  areas: Area[];
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <SectionTitle>Goals</SectionTitle>
+        <SectionLabel>Goals</SectionLabel>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-xs font-medium text-accent underline underline-offset-2"
+          className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
         >
-          {open ? "close" : "add"}
+          {open ? "Close" : "Add"}
         </button>
       </div>
 
       <div className="mt-2 space-y-2">
         {goals.map((g) => (
-          <GoalRow key={g.id} goal={g} onChanged={onChanged} />
+          <GoalRow key={g.id} goal={g} areas={areas} onChanged={onChanged} />
         ))}
         {goals.length === 0 && <div className="text-xs text-muted">No goals yet.</div>}
       </div>
 
-      {open && <NewGoalForm onCreated={onChanged} />}
+      {open && <NewGoalForm areas={areas} onCreated={onChanged} />}
     </Card>
   );
 }
 
-function NewGoalForm({ onCreated }: { onCreated: () => void }) {
+function NewGoalForm({ areas, onCreated }: { areas: Area[]; onCreated: () => void }) {
   const [title, setTitle] = useState("");
   const [dod, setDod] = useState("");
   const [deadline, setDeadline] = useState("");
   const [stakes, setStakes] = useState("3");
+  const [areaId, setAreaId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function create(activation: "active" | "parked") {
@@ -328,6 +477,7 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
         activation,
         deadline: deadline || null,
         stakes: Number(stakes),
+        area_id: areaId ? Number(areaId) : null,
       });
       setTitle("");
       setDod("");
@@ -357,8 +507,12 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           />
+        </label>
+        <label className="w-32 text-xs text-muted">
+          Area
+          <AreaSelect areas={areas} value={areaId} onChange={setAreaId} />
         </label>
         <label className="w-24 text-xs text-muted">
           Stakes 1–5
@@ -368,7 +522,7 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
             max={5}
             value={stakes}
             onChange={(e) => setStakes(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           />
         </label>
       </div>
@@ -382,14 +536,14 @@ function NewGoalForm({ onCreated }: { onCreated: () => void }) {
           disabled={!title || !dod}
           onClick={() => create("parked")}
         >
-          Park it
+          Park It
         </Button>
       </div>
       <p className="text-[11px] text-muted">
         Activating needs a deadline. A goal without one is an intention, not work in progress —
         park it instead.
       </p>
-      {error && <div className="text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
     </div>
   );
 }
@@ -408,7 +562,7 @@ function RebaselineSection({
 
   return (
     <Card>
-      <SectionTitle>Rebaseline</SectionTitle>
+      <SectionLabel>Rebaseline</SectionLabel>
       <p className="mt-1.5 text-xs leading-relaxed text-muted">
         When reality diverges from the plan, choose explicitly. Version 1 is kept forever so the
         drift stays visible.
@@ -418,7 +572,7 @@ function RebaselineSection({
           <button
             key={t.trackable_id}
             onClick={() => setTarget(t)}
-            className="flex w-full items-center justify-between rounded-xl bg-raised px-3 py-2.5 text-left text-sm"
+            className="flex w-full items-center justify-between rounded-control bg-raised px-3 py-2.5 text-left text-body-sm transition duration-200 ease-out hover:bg-line"
           >
             <span className="truncate">{t.title}</span>
             <span className="text-xs text-muted">
@@ -461,9 +615,11 @@ function RebaselineForm({
   const [sessions, setSessions] = useState("");
   const [date, setDate] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function submit() {
     setError(null);
+    setBusy(true);
     try {
       await api.post(`/api/baselines/rebaseline?trackable_id=${trackable.trackable_id}`, {
         resolution,
@@ -474,6 +630,8 @@ function RebaselineForm({
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -485,8 +643,8 @@ function RebaselineForm({
           <button
             key={o.id}
             onClick={() => setResolution(o.id)}
-            className={`w-full rounded-xl border px-3 py-2 text-left ${
-              resolution === o.id ? "border-accent bg-accent/8" : "border-line"
+            className={`w-full rounded-control border px-3 py-2.5 text-left transition duration-200 ease-out ${
+              resolution === o.id ? "border-pure bg-white/6" : "border-line hover:border-muted"
             }`}
           >
             <div className="text-sm font-medium">{o.label}</div>
@@ -497,7 +655,7 @@ function RebaselineForm({
       {resolution && (
         <>
           <Field
-            label="Why? (recorded permanently)"
+            label="Why? (Recorded Permanently)"
             value={rationale}
             onChange={setRationale}
             placeholder="The last 80 pages are reference material"
@@ -509,7 +667,7 @@ function RebaselineForm({
                 type="number"
                 value={sessions}
                 onChange={(e) => setSessions(e.target.value)}
-                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+                className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
               />
             </label>
             <label className="flex-1 text-xs text-muted">
@@ -518,20 +676,21 @@ function RebaselineForm({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+                className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
               />
             </label>
           </div>
           <Button
             className="w-full"
             disabled={!rationale.trim() || !date}
+            pending={busy}
             onClick={submit}
           >
-            Record rebaseline
+            Record Rebaseline
           </Button>
         </>
       )}
-      {error && <div className="text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
     </div>
   );
 }
@@ -547,10 +706,31 @@ interface MilestoneRow {
   exploratory: boolean;
 }
 
-function GoalRow({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
+function GoalRow({
+  goal,
+  areas,
+  onChanged,
+}: {
+  goal: Goal;
+  areas: Area[];
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [adding, setAdding] = useState(false);
+  const [filing, setFiling] = useState(false);
+  const colors = areaColors(areas);
+
+  /* The same PATCH that drag-to-reparent on the graph will call. */
+  async function file(value: string) {
+    setFiling(true);
+    try {
+      await api.patch(`/api/goals/${goal.id}`, { area_id: value ? Number(value) : null });
+      onChanged();
+    } finally {
+      setFiling(false);
+    }
+  }
 
   async function load() {
     setMilestones(await api.get<MilestoneRow[]>(`/api/milestones?goal_id=${goal.id}`));
@@ -560,16 +740,21 @@ function GoalRow({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
   }, [open]);
 
   return (
-    <div className="rounded-xl border border-line">
+    <div className="rounded-card bg-surface">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
       >
+        <span
+          aria-hidden="true"
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: goal.area_id ? colors.get(goal.area_id) : UNASSIGNED_COLOR }}
+        />
         <span className="min-w-0 flex-1 truncate font-medium">{goal.title}</span>
-        {goal.kind === "vision" && <Tag tone="accent">vision</Tag>}
+        {goal.kind === "vision" && <Tag tone="accent">Vision</Tag>}
         {/* §12: parked goals are visible but compete for nothing. */}
-        {goal.activation === "parked" && <Tag>parked</Tag>}
-        {goal.dod_source === "model_estimated" && <Tag tone="warn">DoD inferred</Tag>}
+        {goal.activation === "parked" && <Tag>Parked</Tag>}
+        {goal.dod_source === "model_estimated" && <Tag tone="warn">DoD Inferred</Tag>}
         {goal.deadline && <span className="text-[11px] text-muted">{goal.deadline}</span>}
       </button>
 
@@ -578,6 +763,16 @@ function GoalRow({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
           <div className="text-[11px] text-muted">
             Done when: {goal.definition_of_done}
           </div>
+
+          <label className="block text-xs text-muted">
+            Area
+            <AreaSelect
+              areas={areas}
+              value={goal.area_id ? String(goal.area_id) : ""}
+              onChange={(v) => void file(v)}
+              className={filing ? "opacity-50" : ""}
+            />
+          </label>
           {milestones.map((m) => (
             <MilestoneRowView key={m.id} milestone={m} onChanged={onChanged} />
           ))}
@@ -586,9 +781,9 @@ function GoalRow({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
           )}
           <button
             onClick={() => setAdding((v) => !v)}
-            className="text-xs font-medium text-accent underline underline-offset-2"
+            className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
           >
-            {adding ? "cancel" : "add milestone"}
+            {adding ? "Cancel" : "Add Milestone"}
           </button>
           {adding && (
             <NewMilestoneForm
@@ -615,19 +810,19 @@ function MilestoneRowView({
 }) {
   const [adding, setAdding] = useState(false);
   return (
-    <div className="rounded-lg bg-raised px-3 py-2">
+    <div className="rounded-control bg-abyss px-3 py-2.5">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm">{milestone.title}</span>
         {/* §10: work with no natural counter is budgeted in sessions, not
             given invented units. Both are first-class here. */}
-        {milestone.exploratory && <Tag tone="accent">exploratory</Tag>}
+        {milestone.exploratory && <Tag tone="accent">Exploratory</Tag>}
         {milestone.planned_sessions != null && <Tag>{milestone.planned_sessions} sessions</Tag>}
       </div>
       <button
         onClick={() => setAdding((v) => !v)}
-        className="mt-1 text-[11px] font-medium text-accent underline underline-offset-2"
+        className="mt-1 text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
       >
-        {adding ? "cancel" : "add trackable"}
+        {adding ? "Cancel" : "Add Trackable"}
       </button>
       {adding && (
         <NewTrackableForm
@@ -682,12 +877,12 @@ function NewMilestoneForm({ goalId, onCreated }: { goalId: number; onCreated: ()
           onChange={(e) => setExploratory(e.target.checked)}
           className="size-4 accent-[var(--color-accent)]"
         />
-        No honest way to count this
+        No Honest Way to Count This
       </label>
       {exploratory && (
         <>
           <Field
-            label="Sessions to budget for it"
+            label="Sessions to Budget for It"
             value={sessions}
             onChange={setSessions}
             placeholder="6"
@@ -699,9 +894,9 @@ function NewMilestoneForm({ goalId, onCreated }: { goalId: number; onCreated: ()
         </>
       )}
       <Button className="w-full" disabled={!title || !dod} onClick={create}>
-        Create milestone
+        Create Milestone
       </Button>
-      {error && <div className="text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
     </div>
   );
 }
@@ -762,7 +957,7 @@ function NewTrackableForm({
           <input
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           />
         </label>
         <label className="flex-1 text-xs text-muted">
@@ -771,7 +966,7 @@ function NewTrackableForm({
             type="number"
             value={total}
             onChange={(e) => setTotal(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           />
         </label>
       </div>
@@ -781,7 +976,7 @@ function NewTrackableForm({
           <select
             value={taskType}
             onChange={(e) => setTaskType(e.target.value)}
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           >
             {TASK_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -796,8 +991,8 @@ function NewTrackableForm({
             type="number"
             value={pace}
             onChange={(e) => setPace(e.target.value)}
-            placeholder="your guess"
-            className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+            placeholder="Your guess"
+            className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
           />
         </label>
       </div>
@@ -807,7 +1002,7 @@ function NewTrackableForm({
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-2 text-sm text-ink"
+          className="min-h-11 rounded-control border border-line bg-abyss text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted mt-1.5 w-full px-3"
         />
       </label>
       {/* §13: the estimate is the starting point the system will correct. Saying
@@ -816,39 +1011,9 @@ function NewTrackableForm({
         Your per-session guess is only a starting point — it gets replaced by what you actually do.
       </p>
       <Button className="w-full" disabled={!title || !total} onClick={create}>
-        Create trackable
+        Create Trackable
       </Button>
-      {error && <div className="text-xs text-bad">{error}</div>}
+      {error && <Banner>{error}</Banner>}
     </div>
-  );
-}
-
-/* ---------------------------------------------------------------- primitives */
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="text-sm font-semibold">{children}</div>;
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block text-xs text-muted">
-      {label}
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="mt-0.5 min-h-11 w-full rounded-xl border border-line bg-raised px-3 text-sm text-ink"
-      />
-    </label>
   );
 }

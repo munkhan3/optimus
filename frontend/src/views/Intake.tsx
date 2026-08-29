@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { GoalTree, type TreeNode } from "../components/GoalTree";
 import { PresenceOrb, type OrbState } from "../components/PresenceOrb";
-import { Button, Card, SectionLabel, Tag } from "../components/Primitives";
+import { Banner, Button, Card, SectionLabel, Tag } from "../components/Primitives";
+import { goalTiming } from "../lib/format";
 
 /**
  * The front door: a conversation that compiles intent into a goal graph.
@@ -53,7 +54,7 @@ function toNodes(p: Proposal): TreeNode[] {
     key: g.key,
     kind: "goal",
     title: g.title,
-    subtitle: g.deadline ? `by ${g.deadline}` : "no deadline — parked",
+    subtitle: goalTiming(g),
     flags: {
       estimated: g.dod_source === "model_estimated",
       parked: g.activation !== "active",
@@ -191,12 +192,12 @@ export function Intake({ onApproved }: { onApproved: () => void }) {
   if (available === false) {
     return (
       <Card>
-        <SectionLabel>Intake is offline</SectionLabel>
-        <div className="mt-1.5 text-sm font-semibold">No model key configured</div>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted">
+        <SectionLabel>Intake Is Offline</SectionLabel>
+        <div className="display mt-2 text-subheading">No Model Key Configured</div>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
           The interview needs <code className="text-ink">OPTIMUS_GEMINI_API_KEY</code> in{" "}
           <code className="text-ink">.env.local</code>. Until then you can still build your
-          goals by hand under <span className="text-ink">Goals &amp; capacity</span> — the
+          goals by hand under <span className="text-ink">Goals &amp; Capacity</span> — the
           interview is a faster path to the same rows, not a different system.
         </p>
       </Card>
@@ -209,14 +210,14 @@ export function Intake({ onApproved }: { onApproved: () => void }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       {/* ------------------------------------------------------ conversation */}
-      <div className="flex min-h-[62vh] flex-col">
+      <div className="flex flex-col lg:min-h-[62vh]">
         <div className="flex items-center gap-4 pb-4">
           <PresenceOrb state={orbState} level={busy ? 0.75 : 0.2} />
           <div className="min-w-0">
-            <div className="text-sm font-semibold">
-              {started ? "Let's get this straight" : "What are you trying to do?"}
+            <div className="display text-heading">
+              {started ? "Let's Get This Straight" : "What Are You Trying to Do?"}
             </div>
-            <div className="mt-0.5 text-xs leading-relaxed text-muted">
+            <div className="mt-2 text-[13px] leading-relaxed text-muted">
               {started
                 ? complete
                   ? "That's enough to work with. Review the tree, then create it."
@@ -231,22 +232,22 @@ export function Intake({ onApproved }: { onApproved: () => void }) {
             t.role === "user" ? (
               <div
                 key={i}
-                className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-white"
+                className="ml-auto max-w-[85%] rounded-card rounded-br-md bg-raised px-4 py-2.5 text-body-sm text-ink"
               >
                 {t.content}
               </div>
             ) : (
-              <div key={i} className="max-w-[90%] text-sm leading-relaxed text-ink">
+              <div key={i} className="max-w-[90%] text-body-sm leading-relaxed text-ink">
                 {t.content}
               </div>
             ),
           )}
-          {busy && <div className="text-sm text-faint">thinking…</div>}
+          {busy && <div className="text-body-sm text-faint">Thinking…</div>}
           <div ref={bottom} />
         </div>
 
         {error && (
-          <div className="mt-3 rounded-xl bg-bad/10 px-3 py-2.5 text-xs text-bad">{error}</div>
+          <div className="mt-3"><Banner>{error}</Banner></div>
         )}
 
         <div className="mt-3 flex gap-2">
@@ -263,7 +264,7 @@ export function Intake({ onApproved }: { onApproved: () => void }) {
             placeholder={
               started ? "Answer, or tell me I've got something wrong" : "Start talking…"
             }
-            className="flex-1 resize-none rounded-xl bg-surface px-3.5 py-3 text-sm text-ink outline-none placeholder:text-faint focus:ring-1 focus:ring-accent"
+            className="flex-1 resize-none rounded-control border border-line bg-abyss px-3.5 py-3 text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted"
           />
           <Button onClick={() => submit(draft)} disabled={busy || !draft.trim()}>
             {busy ? "…" : "Send"}
@@ -272,21 +273,21 @@ export function Intake({ onApproved }: { onApproved: () => void }) {
       </div>
 
       {/* -------------------------------------------------------- live tree */}
-      <div className="flex min-h-[62vh] flex-col gap-3">
+      <div className="flex min-h-[46vh] flex-col gap-3 lg:min-h-[62vh]">
         <GoalTree roots={nodes} highlight={fresh} className="flex-1" />
 
         {proposal && proposal.goals.length > 0 && (
           <Card>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <SectionLabel>Not saved yet</SectionLabel>
-                <div className="mt-1 text-xs leading-relaxed text-muted">
+                <SectionLabel>Not Saved Yet</SectionLabel>
+                <div className="mt-1.5 text-[13px] leading-relaxed text-muted">
                   Nothing is written until you say so. Anything I guessed is ringed and will
                   come back at review.
                 </div>
               </div>
               <Button onClick={approve} disabled={busy} className="shrink-0">
-                Create these goals
+                Create These Goals
               </Button>
             </div>
             {!complete && questions.length > 0 && (
