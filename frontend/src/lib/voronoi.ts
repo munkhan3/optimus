@@ -176,27 +176,6 @@ export function polygonBounds(poly: Point[]): Rect {
   return { x0, y0, x1, y1 };
 }
 
-/**
- * The topmost y the polygon reaches at a given x, or null if it never does.
- *
- * A cell's bounding box top can sit a long way from the cell itself -- an
- * angled Voronoi boundary means the highest corner is often above someone
- * else's ground entirely. Captions have to hang off the real edge instead, or
- * they end up labelling a neighbour.
- */
-export function topEdgeAt(poly: Point[], x: number): number | null {
-  let top: number | null = null;
-  for (let i = 0; i < poly.length; i++) {
-    const [x0, y0] = poly[i];
-    const [x1, y1] = poly[(i + 1) % poly.length];
-    if (x0 === x1) continue;
-    const t = (x - x0) / (x1 - x0);
-    if (t < 0 || t > 1) continue;
-    const y = y0 + (y1 - y0) * t;
-    if (top === null || y < top) top = y;
-  }
-  return top;
-}
 
 /** Ray cast, so it holds for any simple polygon rather than only convex ones. */
 export function pointInPolygon(x: number, y: number, poly: Point[]): boolean {
@@ -258,4 +237,250 @@ export function clampIntoPolygon(
     if (!moved) break;
   }
   return [px, py];
+}
+
+
+/**
+ * Smooth outlines for a set of cells that tile the plane.
+ *
+ * The boundaries are a graph, not a pile of independent edges: three cells meet
+ * at a junction and the two territories on either side of a boundary see the
+ * same line. Curving each edge on its own therefore kinks every junction, and
+ * curving each cell on its own tears the tiling apart, because the two owners
+ * of an edge would each bend it their own way.
+ *
+ * So the smoothing happens on the boundary graph itself. Edges are paired at
+ * every junction -- the two that continue straightest through it -- into chains,
+ * and each chain is interpolated as one curve that passes through its junctions
+ * instead of stopping at them. A chain's curve is then handed to both cells that
+ * share it, so the ground stays partitioned exactly while the line reads as one
+ * continuous stroke sweeping through the meeting points. The third edge at a
+ * junction is a chain end: it runs into that curve rather than bending with it,
+ * which is what a tributary does anyway.
+ *
+ * Tangents are unit vectors scaled by the segment they serve, not the raw
+ * Catmull-Rom difference: a cell's outer vertices sit tens of thousands of units
+ * away at the edge of the painted field, and a tangent that took their distance
+ * into account would swing the curve wildly off the short segments on screen.
+ *
+ * The junctions themselves are then eased. Three curves meeting at a point make
+ * a corner in all three outlines -- the angles there sum to 360, so no
+ * arrangement of them is smooth -- and the fix is to round each cell's corner
+ * *outward*, past the junction, rather than cutting it back. Cut back, the
+ * three cells pull away from the point and the background shows through it;
+ * bulged, they overlap across it by a few units and the point stays covered.
+ * The arcs between corners are trimmed by the same absolute amount from either
+ * side, so the long shared stretch of every boundary is still one curve drawn
+ * twice, and only the last few units at each end belong to one cell alone.
+ */
+export function smoothTiling(polys: Point[][], corner = 34, tension = 1): string[] {
+  const vkey = (p: Point) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`;
+  const ekey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+  const point = new Map<string, Point>();
+  const edge = new Map<string, { a: string; b: string }>();
+  const incident = new Map<string, string[]>();
+
+  for (const poly of polys) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i];
+      const q = poly[(i + 1) % poly.length];
+      const pk = vkey(p);
+      const qk = vkey(q);
+      if (pk === qk) continue;
+      point.set(pk, p);
+      point.set(qk, q);
+      const ek = ekey(pk, qk);
+      if (edge.has(ek)) continue;
+      edge.set(ek, { a: pk, b: qk });
+      incident.set(pk, [...(incident.get(pk) ?? []), ek]);
+      incident.set(qk, [...(incident.get(qk) ?? []), ek]);
+    }
+  }
+
+  /** Unit direction from vertex `vk` along edge `ek`. */
+  function away(vk: string, ek: string): Point {
+    const e = edge.get(ek)!;
+    const here = point.get(vk)!;
+    const there = point.get(e.a === vk ? e.b : e.a)!;
+    const dx = there[0] - here[0];
+    const dy = there[1] - here[1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [dx / len, dy / len];
+  }
+
+  // Pair up at each junction. Only an obtuse pair is worth joining: two edges
+  // that leave at less than a right angle are a spur, not a continuation.
+  const partner = new Map<string, string>();
+  for (const [vk, eks] of incident) {
+    let best: [string, string] | null = null;
+    let bestDot = 0;
+    for (let i = 0; i < eks.length; i++) {
+      for (let j = i + 1; j < eks.length; j++) {
+        const [ax, ay] = away(vk, eks[i]);
+        const [bx, by] = away(vk, eks[j]);
+        const dot = ax * bx + ay * by;
+        if (dot < bestDot) {
+          bestDot = dot;
+          best = [eks[i], eks[j]];
+        }
+      }
+    }
+    if (best) {
+      partner.set(`${vk}@${best[0]}`, best[1]);
+      partner.set(`${vk}@${best[1]}`, best[0]);
+    }
+  }
+
+  const used = new Set<string>();
+  const chains: string[][] = [];
+
+  function walk(startV: string, startE: string): string[] {
+    const seq = [startV];
+    let v = startV;
+    let e: string | undefined = startE;
+    while (e && !used.has(e)) {
+      used.add(e);
+      const { a, b } = edge.get(e)!;
+      const next = a === v ? b : a;
+      seq.push(next);
+      e = partner.get(`${next}@${e}`);
+      v = next;
+    }
+    return seq;
+  }
+
+  // Chain ends first, so an open run is walked from its end and comes out in
+  // one piece; whatever is left over is a closed loop and can start anywhere.
+  for (const [vk, eks] of incident) {
+    for (const ek of eks) {
+      if (!used.has(ek) && !partner.has(`${vk}@${ek}`)) chains.push(walk(vk, ek));
+    }
+  }
+  for (const [ek, e] of edge) {
+    if (!used.has(ek)) chains.push(walk(e.a, ek));
+  }
+
+  const curve = new Map<string, { from: string; c1: Point; c2: Point }>();
+  for (const seq of chains) {
+    const pts = seq.map((k) => point.get(k)!);
+    const n = pts.length;
+    if (n < 2) continue;
+
+    const unit = (a: Point, b: Point): Point => {
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy) || 1;
+      return [dx / len, dy / len];
+    };
+
+    const tangent: Point[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i === 0) tangent.push(unit(pts[0], pts[1]));
+      else if (i === n - 1) tangent.push(unit(pts[n - 2], pts[n - 1]));
+      else {
+        // The bisector of the two edge directions: the curve leaves the
+        // junction the way it arrived, so the bend is shared between them.
+        const [ax, ay] = unit(pts[i - 1], pts[i]);
+        const [bx, by] = unit(pts[i], pts[i + 1]);
+        const len = Math.hypot(ax + bx, ay + by);
+        tangent.push(len < 1e-9 ? [ax, ay] : [(ax + bx) / len, (ay + by) / len]);
+      }
+    }
+
+    for (let i = 0; i < n - 1; i++) {
+      const p = pts[i];
+      const q = pts[i + 1];
+      const reach = (Math.hypot(q[0] - p[0], q[1] - p[1]) * tension) / 3;
+      curve.set(ekey(seq[i], seq[i + 1]), {
+        from: seq[i],
+        c1: [p[0] + tangent[i][0] * reach, p[1] + tangent[i][1] * reach],
+        c2: [q[0] - tangent[i + 1][0] * reach, q[1] - tangent[i + 1][1] * reach],
+      });
+    }
+  }
+
+  /** The part of a cubic between two parameters, by de Casteljau. */
+  function slice(
+    p0: Point, c1: Point, c2: Point, p3: Point, u0: number, u1: number,
+  ): [Point, Point, Point, Point] {
+    const at = (a: Point, b: Point, t: number): Point => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+    ];
+    const cut = (t: number) => {
+      const a = at(p0, c1, t);
+      const b = at(c1, c2, t);
+      const c = at(c2, p3, t);
+      const d = at(a, b, t);
+      const e = at(b, c, t);
+      return { point: at(d, e, t), left: [p0, a, d] as Point[], right: [e, c, p3] as Point[] };
+    };
+    const first = cut(u1);
+    // Re-parameterise: the head has been shortened, so the second cut moves.
+    const t = u0 / u1;
+    const p0b = first.left[0] as Point;
+    const c1b = first.left[1] as Point;
+    const c2b = first.left[2] as Point;
+    const p3b = first.point;
+    const a = at(p0b, c1b, t);
+    const b = at(c1b, c2b, t);
+    const c = at(c2b, p3b, t);
+    const d = at(a, b, t);
+    const e = at(b, c, t);
+    return [at(d, e, t), e, c, p3b];
+  }
+
+  const unitTo = (a: Point, b: Point): Point => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [dx / len, dy / len];
+  };
+  const gap = (a: Point, b: Point) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+
+  return polys.map((poly) => {
+    const n = poly.length;
+    if (n < 3) return "";
+
+    // Each edge as a cubic in this cell's direction of travel, trimmed at both
+    // ends to leave room for the corners. The trim is a fixed distance and the
+    // arc is shared, so both owners of an edge trim it identically.
+    const arc: [Point, Point, Point, Point][] = [];
+    for (let i = 0; i < n; i++) {
+      const p = poly[i];
+      const q = poly[(i + 1) % n];
+      const c = curve.get(ekey(vkey(p), vkey(q)));
+      const forward = c ? c.from === vkey(p) : true;
+      const c1 = c ? (forward ? c.c1 : c.c2) : ([p[0] + (q[0] - p[0]) / 3, p[1] + (q[1] - p[1]) / 3] as Point);
+      const c2 = c ? (forward ? c.c2 : c.c1) : ([p[0] + ((q[0] - p[0]) * 2) / 3, p[1] + ((q[1] - p[1]) * 2) / 3] as Point);
+      const u = Math.min(0.34, corner / (gap(p, q) || 1));
+      arc.push(slice(p, c1, c2, q, u, 1 - u));
+    }
+
+    const parts = [`M ${arc[0][0][0]} ${arc[0][0][1]}`];
+    for (let i = 0; i < n; i++) {
+      const [, a1, a2, end] = arc[i];
+      parts.push(`C ${a1[0]} ${a1[1]} ${a2[0]} ${a2[1]} ${end[0]} ${end[1]}`);
+
+      /* The corner. Its controls sit *past* the junction -- 1.6 times the
+         distance to it -- along the tangents the two arcs arrive and leave on.
+         That makes the join smooth in both directions and carries the outline
+         a few units outside the point, which is what keeps three cells from
+         opening a hole where they meet. */
+      const vertex = poly[(i + 1) % n];
+      const next = arc[(i + 1) % n];
+      const into = unitTo(a2, end);
+      const outOf = unitTo(next[0], next[1]);
+      const reach = 1.6;
+      const k1 = gap(end, vertex) * reach;
+      const k2 = gap(next[0], vertex) * reach;
+      parts.push(
+        `C ${end[0] + into[0] * k1} ${end[1] + into[1] * k1}` +
+          ` ${next[0][0] - outOf[0] * k2} ${next[0][1] - outOf[1] * k2}` +
+          ` ${next[0][0]} ${next[0][1]}`,
+      );
+    }
+    return `${parts.join(" ")} Z`;
+  });
 }

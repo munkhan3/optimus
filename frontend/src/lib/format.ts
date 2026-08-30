@@ -24,15 +24,15 @@ export function pct(fraction: number | null): string {
 export function basisLabel(basis: Basis, n: number): string {
   switch (basis) {
     case "observed":
-      return `measured over ${n} sessions`;
+      return `Measured Over ${n} Sessions`;
     case "shrunk":
-      return `${n} session${n === 1 ? "" : "s"}, blended with your estimate`;
+      return `${n} Session${n === 1 ? "" : "s"}, Blended With Your Estimate`;
     case "prior_only":
-      return "your estimate — no sessions yet";
+      return "Your Estimate — No Sessions Yet";
     case "pooled_prior":
-      return "borrowed from similar work";
+      return "Borrowed From Similar Work";
     case "unavailable":
-      return "not enough data";
+      return "Not Enough Data";
   }
 }
 
@@ -58,7 +58,7 @@ export function dateShort(iso: string | null): string {
 
 /** §24.7: always a range, never a single date. */
 export function projectionText(projection: Projection): string {
-  if (!projection.earliest || !projection.latest) return "not enough data";
+  if (!projection.earliest || !projection.latest) return "Not Enough Data";
   if (projection.earliest === projection.latest) return dateShort(projection.earliest);
   return `${dateShort(projection.earliest)} – ${dateShort(projection.latest)}`;
 }
@@ -71,9 +71,9 @@ export function elapsed(fromIso: string): string {
 }
 
 export function relativeDays(days: number | null): string {
-  if (days === null) return "never";
-  if (days === 0) return "today";
-  if (days === 1) return "yesterday";
+  if (days === null) return "Never";
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
   return `${days}d ago`;
 }
 
@@ -93,11 +93,11 @@ export function goalTiming(g: {
 }): string {
   if (g.pace_mode === "reset_period" && g.reset_period_days) {
     return g.reset_period_days === 7
-      ? "every week"
-      : `every ${g.reset_period_days} days`;
+      ? "Every Week"
+      : `Every ${g.reset_period_days} Days`;
   }
-  if (g.deadline) return `by ${g.deadline}`;
-  return g.activation === "active" ? "no deadline" : "parked — no deadline";
+  if (g.deadline) return `By ${g.deadline}`;
+  return g.activation === "active" ? "No Deadline" : "Parked — No Deadline";
 }
 
 /**
@@ -122,4 +122,35 @@ export function mondayOf(d: Date = new Date()): string {
   const copy = new Date(d);
   copy.setDate(copy.getDate() - ((copy.getDay() + 6) % 7));
   return localDate(copy);
+}
+
+/**
+ * Title Case for labels, captions and data readouts.
+ *
+ * Used for values that arrive lowercase from the API -- task types, health
+ * component names, baseline resolutions -- so a label reads "Reading" and
+ * "Move Deadline" rather than shouting the database's spelling at the user.
+ *
+ * Full sentences are never passed through this. A sentence in Title Case reads
+ * as a headline, and most of the prose in this app is deliberately a sentence:
+ * an explanation of why a number is missing, or what a warning means.
+ */
+const MINOR = new Set([
+  "a", "an", "and", "as", "at", "but", "by", "for", "in", "nor",
+  "of", "on", "or", "per", "the", "to", "vs", "with",
+]);
+
+export function titleCase(text: string): string {
+  const words = text.replace(/[_-]/g, " ").trim().split(/\s+/);
+  return words
+    .map((word, i) => {
+      const lower = word.toLowerCase();
+      // Small words stay small unless they open or close the phrase.
+      if (i > 0 && i < words.length - 1 && MINOR.has(lower)) return lower;
+      // Leave anything already carrying interior capitals alone -- it is a
+      // proper noun or an acronym the user typed, not ours to restyle.
+      if (/[A-Z]/.test(word.slice(1))) return word;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
 }

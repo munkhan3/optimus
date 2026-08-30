@@ -13,11 +13,13 @@ import { Review } from "./views/Review";
 import { Tree } from "./views/Tree";
 import { Assistant } from "./views/Assistant";
 import { Intake } from "./views/Intake";
+import { Dashboard } from "./views/Dashboard";
+import { Roadmap } from "./views/Roadmap";
 import { AccountPanel } from "./components/AccountPanel";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
-  const [tab, setTab] = useState<Tab>("today");
+  const [tab, setTab] = useState<Tab>("dash");
   // null = not yet known. Distinguishing that from "empty" keeps the
   // intake screen from flashing before the first response lands.
   const [hasGoals, setHasGoals] = useState<boolean | null>(null);
@@ -85,11 +87,12 @@ export default function App() {
   if (hasGoals === false) {
     return (
       <>
-        <Shell tab="intake" setTab={setTab} onAccount={() => setAccountOpen(true)}>
-          <ErrorBoundary label="The intake view">
-            <Intake onApproved={refresh} />
-          </ErrorBoundary>
-        </Shell>
+        {/* No shell: a rail of five tabs and a header would advertise an app
+            that does not exist yet. The screen is the conversation and the
+            graph coming out of it, and nothing else. */}
+        <ErrorBoundary label="The intake view">
+          <Intake onApproved={refresh} onAccount={() => setAccountOpen(true)} />
+        </ErrorBoundary>
         {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onDeleted={leaveAccount} onSignedOut={leaveAccount} />}
       </>
     );
@@ -101,8 +104,11 @@ export default function App() {
         tab={tab}
         setTab={setTab}
         sessionOpen={!!session}
-        /* The map is the view; everything else is a column of cards. */
-        bleed={tab === "tree"}
+        /* A canvas view gets the whole screen; a column of cards does not.
+           The roadmap is a canvas in all three of its modes -- a calendar with
+           fewer visible days because a toolbar took the top 56px is a worse
+           calendar for no gain. */
+        bleed={tab === "tree" || tab === "roadmap" || tab === "dash"}
         onAccount={() => setAccountOpen(true)}
       >
         {error && (
@@ -128,6 +134,8 @@ export default function App() {
           )}
           {tab === "tree" && <Tree onStarted={refresh} sessionOpen={!!session} />}
           {tab === "plan" && <Plan trackables={trackables} onChanged={refresh} />}
+          {tab === "dash" && <Dashboard onNavigate={setTab} />}
+          {tab === "roadmap" && <Roadmap />}
           {tab === "review" && <Review />}
           {tab === "ask" && <Assistant />}
         </ErrorBoundary>

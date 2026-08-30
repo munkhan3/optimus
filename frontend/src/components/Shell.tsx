@@ -1,14 +1,35 @@
-import type { ReactNode } from "react";
-import { IconAsk, IconPlan, IconToday, IconTree, IconWeek, IconWork } from "./Icons";
+import type { CSSProperties, ReactNode } from "react";
+import {
+  IconAsk,
+  IconDash,
+  IconPlan,
+  IconRoadmap,
+  IconToday,
+  IconTree,
+  IconWeek,
+  IconWork,
+  Mark,
+} from "./Icons";
 
-export type Tab = "today" | "work" | "tree" | "plan" | "review" | "ask" | "intake";
+export type Tab =
+  | "dash"
+  | "today"
+  | "roadmap"
+  | "work"
+  | "tree"
+  | "plan"
+  | "review"
+  | "ask"
+  | "intake";
 
 /** Grouped the way Origin groups: what you do daily, then what you set up. */
 const GROUPS: { label: string; items: { id: Tab; label: string; Icon: typeof IconToday }[] }[] = [
   {
     label: "Track",
     items: [
+      { id: "dash", label: "Dashboard", Icon: IconDash },
       { id: "today", label: "Today", Icon: IconToday },
+      { id: "roadmap", label: "Roadmap", Icon: IconRoadmap },
       { id: "work", label: "Work", Icon: IconWork },
       { id: "tree", label: "Tree", Icon: IconTree },
       { id: "review", label: "Week", Icon: IconWeek },
@@ -146,18 +167,22 @@ export function Shell({
         </header>
 
         <main
-          className={
+          className={[
             bleed
               ? "w-full min-h-0 flex-1"
-              : "w-full max-w-[1100px] flex-1 px-4 py-6 sm:px-6 lg:px-10"
-          }
-          /* Clears the mobile nav, plus the session bar when one is docked above
-             it. The bar grows tall in its confirm state, hence the generous
-             reserve rather than a fixed padding class. Full-bleed views get the
-             same reserve so the map never hides behind the tab bar. */
-          style={{
-            paddingBottom: `calc(${sessionOpen ? 210 : MOBILE_NAV_H}px + env(safe-area-inset-bottom))`,
-          }}
+              : "w-full max-w-[1100px] flex-1 px-4 py-6 sm:px-6 lg:px-10",
+            /* Clears the mobile nav, plus the session bar when one is docked
+               above it. The bar grows tall in its confirm state, hence the
+               generous reserve. The nav's share of it is dropped at lg: the
+               tab bar is hidden there, and reserving for it left a dead strip
+               under every view -- most visibly under the map, which is sized
+               to the space it is given and so simply stopped short of the
+               bottom of the screen. */
+            sessionOpen
+              ? "pb-[calc(210px+env(safe-area-inset-bottom))] lg:pb-[150px]"
+              : "pb-[calc(var(--mobile-nav)+env(safe-area-inset-bottom))] lg:pb-0",
+          ].join(" ")}
+          style={{ "--mobile-nav": `${MOBILE_NAV_H}px` } as CSSProperties}
         >
           {children}
         </main>
@@ -168,18 +193,23 @@ export function Shell({
         className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-line bg-bg/95 backdrop-blur lg:hidden"
         aria-label="Main"
       >
-        <div className="flex">
+        {/* Eight tabs will not fit a 375px screen at a usable touch size, so the
+            bar scrolls rather than shrinking the targets below 44px or hiding
+            destinations behind a "more" sheet. The body never scrolls
+            horizontally -- only this strip does. */}
+        <div className="flex overflow-x-auto">
           {[...ALL_TABS, { id: "ask" as Tab, label: "Ask", Icon: IconAsk }].map(
             ({ id, label, Icon }) => {
               /* The desktop rail can afford "Goals & capacity"; a phone tab cannot. */
-              const short = label === "Goals & Capacity" ? "Plan" : label;
+              const short =
+                label === "Goals & Capacity" ? "Plan" : label === "Dashboard" ? "Dash" : label;
               return (
                 <button
                   key={id}
                   onClick={() => setTab(id)}
                   aria-current={tab === id ? "page" : undefined}
                   aria-label={label}
-                  className={`relative flex flex-1 flex-col items-center gap-1 py-3 text-[10px] font-medium transition duration-200 ease-out ${
+                  className={`relative flex min-w-[68px] flex-1 shrink-0 flex-col items-center gap-1 py-3 text-[10px] font-medium transition duration-200 ease-out ${
                     tab === id ? "text-ink" : "text-faint"
                   }`}
                 >
@@ -204,13 +234,3 @@ export function Shell({
   );
 }
 
-function Mark() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-[22px] text-ink" aria-hidden="true">
-      <path
-        d="M12 2c0 5.523 4.477 10 10 10-5.523 0-10 4.477-10 10 0-5.523-4.477-10-10-10 5.523 0 10-4.477 10-10z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}

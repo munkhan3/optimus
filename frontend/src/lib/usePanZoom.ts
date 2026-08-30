@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Pan and zoom for an SVG viewport.
@@ -11,6 +11,12 @@ import { useCallback, useRef, useState } from "react";
  *
  *   `touch-none` plus wheel-only zoom left the view unusable on a phone. Two
  *   active pointers are now tracked as a pinch.
+ *
+ * An optional `clamp` runs on every view the hook produces, whatever produced
+ * it -- wheel, pinch, drag, or a caller setting the view outright. Constraining
+ * at the single point where the view is written is the only way an axis stays
+ * genuinely locked: a rule applied in the drag handler alone would still let a
+ * zoom slide the content out from under it.
  */
 
 export interface View {
@@ -22,8 +28,26 @@ export interface View {
 const MIN_K = 0.25;
 const MAX_K = 3;
 
-export function usePanZoom(initial: View = { x: 0, y: 0, k: 1 }) {
-  const [view, setView] = useState<View>(initial);
+export function usePanZoom(
+  initial: View = { x: 0, y: 0, k: 1 },
+  clamp?: (v: View) => View,
+) {
+  const [view, setViewRaw] = useState<View>(initial);
+  /* Held in a ref rather than closed over: the clamp depends on the layout and
+     the frame size, both of which change, and re-creating every handler each
+     time they did would tear down the pointer capture mid-drag. */
+  const clampRef = useRef(clamp);
+  useEffect(() => {
+    clampRef.current = clamp;
+  }, [clamp]);
+
+  const setView = useCallback((next: View | ((v: View) => View)) => {
+    setViewRaw((v) => {
+      const proposed = typeof next === "function" ? next(v) : next;
+      return clampRef.current ? clampRef.current(proposed) : proposed;
+    });
+  }, []);
+
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const panFrom = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const pinchFrom = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null);
@@ -45,7 +69,7 @@ export function usePanZoom(initial: View = { x: 0, y: 0, k: 1 }) {
       const gy = (sy - v.y) / v.k;
       return { k, x: sx - gx * k, y: sy - gy * k };
     });
-  }, []);
+  }, [setView]);
 
   const onWheel = useCallback(
     (e: React.WheelEvent<SVGSVGElement>) => {
@@ -104,7 +128,7 @@ export function usePanZoom(initial: View = { x: 0, y: 0, k: 1 }) {
     const origin = panFrom.current;
     if (!origin) return;
     setView((v) => ({ ...v, x: origin.vx + (p.x - origin.x), y: origin.vy + (p.y - origin.y) }));
-  }, []);
+  }, [setView]);
 
   const endPointer = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);

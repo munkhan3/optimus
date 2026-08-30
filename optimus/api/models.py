@@ -38,8 +38,8 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
-    Index,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -225,6 +225,11 @@ class Goal(SQLModel, table=True):
     status: str = "not_started"
     verified: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+    # NULL means the completion date is UNKNOWN, not that the work is
+    # unfinished -- every row written before this column existed reads that
+    # way, and a roadmap that drew them as open bars would be inventing
+    # history. Stamped by write_rules.stamp_completion, never by a router.
+    completed_at: datetime | None = Field(default=None, sa_type=TZ)
 
 
 class Milestone(SQLModel, table=True):
@@ -254,6 +259,8 @@ class Milestone(SQLModel, table=True):
     planned_sessions: int | None = None
     exploratory: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+    # NULL is UNKNOWN, not unfinished -- see Goal.completed_at.
+    completed_at: datetime | None = Field(default=None, sa_type=TZ)
 
 
 class Trackable(SQLModel, table=True):
@@ -284,6 +291,8 @@ class Trackable(SQLModel, table=True):
     exploratory: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     status: str = "not_started"
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+    # NULL is UNKNOWN, not unfinished -- see Goal.completed_at.
+    completed_at: datetime | None = Field(default=None, sa_type=TZ)
 
 
 class Task(SQLModel, table=True):
@@ -566,3 +575,107 @@ class PlanItem(SQLModel, table=True):
     rank: int
     user_action: str | None = None     # revealed preference -- §32's training signal
     completed: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
+
+
+# ----------------------------------------------------------------- dashboards
+
+
+class DashboardLayout(SQLModel, table=True):
+    """The widget arrangement, as one JSON document per dashboard.
+
+    A row per widget is the obvious shape and the wrong one: a single drag
+    rewrites every position at once, so per-widget rows buy N-row churn per
+    gesture and nothing else. A document is also written whole or not at all,
+    which is what makes a half-saved layout impossible rather than merely
+    unlikely.
+
+    The widget list is deliberately untyped here. The set of widget kinds is a
+    frontend concern that will churn, and a CHECK constraint enumerating them
+    would turn every new widget into a migration.
+    """
+
+    __tablename__ = "dashboard_layout"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="dashboard_layout_user_name_unique"),
+        CheckConstraint("length(trim(name)) > 0", name="dashboard_layout_name_not_blank"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
+    # Named so a second dashboard is a UI change later, not a migration.
+    name: str = Field(default="Overview", sa_column_kwargs={"server_default": "Overview"})
+    widgets: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(
+            JSONB().with_variant(JSON(), "sqlite"),
+            nullable=False,
+            server_default=text("'[]'"),
+        ),
+    )
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
+
+
+class SessionAllocation(SQLModel, table=True):
+    """A week shaped by hand: N sessions of this work, on this day.
+
+    §25.5 redistributes a week across its remaining days arithmetically, with no
+    scoring. This table is the user overriding that result (D11 -- the user
+    always decides), and the day generator honours it when rows exist and falls
+    back to the arithmetic when they do not.
+
+    It is a table rather than a flag on plan_item because plan items are
+    disposable: POST /api/planning/day deletes and rewrites every item for the
+    date. A pinned flag there would survive exactly until the next regeneration,
+    which is to say it would not survive at all.
+
+    Note what is absent: any time of day. Sessions are fixed-length and their
+    order within a day carries no meaning (§36.1), so storing a clock time would
+    invent precision the model does not have -- and make Optimus a second
+    calendar that disagrees with the real one (§7).
+    """
+
+    __tablename__ = "session_allocation"
+    __table_args__ = (
+        # The same exactly-one rule weekly_commitment carries. An allocation
+        # pointing at both or neither is not a weaker record, it is a broken one.
+        CheckConstraint(
+            "(trackable_id IS NOT NULL) <> (milestone_id IS NOT NULL)",
+            name="session_allocation_exactly_one_target",
+        ),
+        CheckConstraint("sessions >= 0", name="session_allocation_non_negative"),
+        Index(
+            "session_allocation_trackable_unique",
+            "capacity_id",
+            "trackable_id",
+            "plan_date",
+            unique=True,
+            postgresql_where=text("trackable_id IS NOT NULL"),
+        ),
+        Index(
+            "session_allocation_milestone_unique",
+            "capacity_id",
+            "milestone_id",
+            "plan_date",
+            unique=True,
+            postgresql_where=text("milestone_id IS NOT NULL"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = owner_field()
+    # CASCADE: an allocation is a shape for one week's committed capacity. If
+    # that capacity row goes, the shape is meaningless rather than orphaned.
+    capacity_id: int = Field(
+        sa_column=Column(
+            "capacity_id",
+            Integer,
+            ForeignKey("capacity.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+    )
+    trackable_id: int | None = Field(default=None, foreign_key="trackable.id")
+    milestone_id: int | None = Field(default=None, foreign_key="milestone.id")
+    plan_date: date = Field(index=True)
+    sessions: int
+    updated_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)

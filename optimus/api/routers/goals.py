@@ -17,8 +17,8 @@ from sqlmodel import Session, select
 
 from ..auth import get_user_session as get_session
 from ..models import Goal, Milestone
-from ..repo.write_rules import check_activation
-from ..schemas import GoalCreate, GoalUpdate, MilestoneCreate
+from ..repo.write_rules import check_activation, stamp_completion
+from ..schemas import GoalCreate, GoalUpdate, MilestoneCreate, MilestoneUpdate
 
 router = APIRouter(prefix="/api", tags=["goals"])
 
@@ -47,6 +47,7 @@ def update_goal(goal_id: int, body: GoalUpdate, db: Session = Depends(get_sessio
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(goal, field, value)
     check_activation(goal)
+    stamp_completion(goal)
     db.add(goal)
     db.commit()
     db.refresh(goal)
@@ -72,3 +73,28 @@ def list_milestones(
     if goal_id is not None:
         stmt = stmt.where(Milestone.goal_id == goal_id)
     return [m.model_dump() for m in db.exec(stmt).all()]
+
+
+@router.patch("/milestones/{milestone_id}")
+def update_milestone(
+    milestone_id: int, body: MilestoneUpdate, db: Session = Depends(get_session)
+) -> dict:
+    """Marking a milestone done was, until now, impossible.
+
+    Nothing in the application wrote milestone.status -- planning_service read
+    it to exclude finished work, but no path ever set it. So a milestone could
+    be reached and never recorded as reached, which leaves the roadmap unable
+    to draw what actually landed.
+    """
+    milestone = db.get(Milestone, milestone_id)
+    if milestone is None:
+        raise HTTPException(404, f"milestone {milestone_id} not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(milestone, field, value)
+    if milestone.blocked_by is not None and milestone.blocked_by == milestone.id:
+        raise HTTPException(422, "A milestone cannot block itself.")
+    stamp_completion(milestone)
+    db.add(milestone)
+    db.commit()
+    db.refresh(milestone)
+    return milestone.model_dump()

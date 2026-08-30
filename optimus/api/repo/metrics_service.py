@@ -64,6 +64,16 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
     goal = loader.goal_for_trackable(db, trackable)
 
     state = loader.to_trackable_state(trackable)
+    # A recurring commitment measures remaining work against THIS period, not
+    # against a lifetime total that only ever grows (§12/D4). The engine has
+    # always supported it; nothing passed the argument, so every recurring
+    # trackable silently reported carry-forward remaining work.
+    period_start = loader.current_period_start(goal, today)
+    period_done = (
+        loader.completed_units_since(db, trackable.id or 0, period_start)
+        if period_start is not None
+        else None
+    )
     if goal and goal.pace_mode == PaceMode.RESET_PERIOD.value:
         state = loader.TrackableState(**{**asdict(state), "pace_mode": PaceMode.RESET_PERIOD})
 
@@ -71,8 +81,8 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
     pooled = loader.pooled_sessions(db, trackable.task_type)
     pace = empirical_pace(pooled, trackable.prior_pace, config)
 
-    progress = percent_complete(state)
-    remaining = remaining_units(state)
+    progress = percent_complete(state, period_done)
+    remaining = remaining_units(state, period_done)
 
     baselines = loader.baselines_for_trackable(db, trackable.id or 0)
     used = loader.sessions_used_this_week(db, trackable.id or 0, today)
@@ -114,6 +124,7 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
         "title": trackable.title,
         "unit": trackable.unit,
         "task_type": trackable.task_type,
+        "status": trackable.status,
         "exploratory": trackable.exploratory,
         "total_units_source": trackable.total_units_source,
         "progress": _serialize(progress),
@@ -127,6 +138,9 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
         "health": _serialize(health),
         "days_since_last_session": stale,
         "sessions_used_this_week": used,
+        # Present so the UI can say which window a recurring number describes.
+        # Null for carry-forward work, where "this period" has no meaning.
+        "period_start": period_start.isoformat() if period_start else None,
     }
 
 
@@ -174,6 +188,7 @@ def milestone_view(db: Session, milestone: Milestone, today: date) -> dict[str, 
         "title": milestone.title,
         "definition_of_done": milestone.definition_of_done,
         "dod_source": milestone.dod_source,
+        "status": milestone.status,
         "exploratory": milestone.exploratory,
         "planned_sessions": planned,
         "sessions_used": used,
@@ -195,3 +210,31 @@ def _milestone_sessions(db: Session, milestone_id: int) -> list:
 
 def _milestone_sessions_used(db: Session, milestone_id: int) -> int:
     return len(_milestone_sessions(db, milestone_id))
+
+
+def calibration_by_task_type(db: Session) -> dict[str, Any]:
+    """§24.5 per task_type, with the timed/retroactive split kept separate.
+
+    The split is not decoration. D13 weights retroactive sessions at 0.5 in
+    calibration, and that 0.5 is a placeholder the document expects to be
+    replaced by a measured value -- which is only possible if the two
+    distributions are reported apart rather than folded together.
+
+    Shared with the weekly review so a task type cannot be described as
+    well-calibrated on one screen and badly on another.
+    """
+    config = get_metrics_config()
+    out: dict[str, Any] = {}
+    for task_type in db.exec(select(WorkSession.task_type).distinct()).all():
+        report = calibration(loader.pooled_sessions(db, task_type), config)
+        if not report.n_total:
+            continue
+        out[task_type] = {
+            "median_ratio": report.median_ratio,
+            "n": report.n_total,
+            "n_timed": len(report.timed_ratios),
+            "n_retroactive": len(report.retroactive_ratios),
+            "timed_ratios": list(report.timed_ratios),
+            "retroactive_ratios": list(report.retroactive_ratios),
+        }
+    return out

@@ -109,19 +109,14 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
     # ---- what the system learned about the user this week --------------------
     # §8: completion ratios trending toward 1.0 is a stated success criterion,
     # so calibration is reported per task_type rather than as one number.
-    from optimus.metrics.calibration import calibration as calibrate
+    from ..repo.metrics_service import calibration_by_task_type
 
-    calibration_by_type = {}
-    for task_type in db.exec(select(WorkSession.task_type).distinct()).all():
-        sessions = loader.pooled_sessions(db, task_type)
-        report = calibrate(sessions, config)
-        if report.n_total:
-            calibration_by_type[task_type] = {
-                "median_ratio": report.median_ratio,
-                "n": report.n_total,
-                "n_timed": len(report.timed_ratios),
-                "n_retroactive": len(report.retroactive_ratios),
-            }
+    # Shared with the dashboard so the two screens cannot disagree. The review
+    # has never shown the raw ratio series, so it keeps projecting them away.
+    calibration_by_type = {
+        task_type: {k: v for k, v in report.items() if not k.endswith("_ratios")}
+        for task_type, report in calibration_by_task_type(db).items()
+    }
 
     # ---- rebaseline prompts, gated ------------------------------------------
     prompts = []

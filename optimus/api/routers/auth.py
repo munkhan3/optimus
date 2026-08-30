@@ -17,17 +17,21 @@ from ..auth import (
     token_digest,
     verify_password,
 )
-from ..db import get_session
+from ..db import TENANT_MODELS, get_session
 from ..models import AuthSession, User
 from ..schemas import AccountCreate, AccountDelete, AccountLogin
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 LEGACY_EMAIL = "legacy@optimus.local"
-TENANT_TABLES = (
-    "goal", "milestone", "trackable", "task", "capacity", "goal_budget",
-    "weekly_commitment", "work_session", "progress_check", "baseline",
-    "open_gap", "daily_plan", "plan_item",
-)
+# Derived, never hand-listed. This was a literal tuple and had already fallen
+# behind: `area` was missing, so registering the first account after using the
+# legacy token stranded every area on a user row that is then deleted -- and
+# area.user_id cascades, so they did not survive it.
+#
+# db.TENANT_MODELS carries a guard test (test_every_owned_table_is_registered_
+# for_tenant_scoping) that fails whenever a table with user_id is missing from
+# it, so deriving from it makes this list unable to rot again.
+TENANT_TABLES = tuple(model.__tablename__ for model in TENANT_MODELS)
 
 
 def user_payload(user: User) -> dict:

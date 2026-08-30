@@ -53,7 +53,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    // A 200 that will not parse means the response was not JSON at all --
+    // in practice the SPA shell, served because the endpoint does not exist on
+    // the running server. Surfacing the raw parser error here ("the string did
+    // not match the expected pattern") tells the user nothing; this does.
+    throw new ApiError(
+      response.status,
+      `${path} did not return JSON. If this screen is new, the running server ` +
+        `is probably older than the app — restart it.`,
+    );
+  }
 }
 
 export const api = {

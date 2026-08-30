@@ -212,3 +212,38 @@ def _units_this_week(db: Session, trackable_id: int, today: date) -> float:
 
 def tier_for(item: ScoredItem, config: MetricsConfig, at_risk: bool, est_minutes: int | None) -> str:
     return assign_tier(item, config, at_risk, est_minutes)
+
+
+def apply_manual_allocation(alloc: dict[str, Any], placed_sessions: int, commitment) -> dict:
+    """Replace the arithmetic day with the one the user shaped by hand (D11).
+
+    §25.5's redistribution is what the system would choose. This is the user
+    choosing instead, and the user always decides. What is deliberately NOT
+    replaced is `capped`: whether the week fits is a fact about the week, not
+    about how its sessions were arranged, so the rebaseline signal survives the
+    override intact (D9).
+
+    A metered commitment converts sessions to units at the week's own committed
+    rate -- target_units / committed_sessions. That ratio is the user's own
+    declaration for this week, not an estimate the system invented, which is
+    why it is safe to multiply by here.
+    """
+    per_day = float(placed_sessions)
+    if alloc["unit"] == "units":
+        committed_sessions = commitment.committed_sessions or 0
+        if committed_sessions <= 0 or commitment.target_units is None:
+            # Nothing honest to convert with. Leave the arithmetic alone rather
+            # than fabricate a units-per-session rate.
+            return alloc
+        per_day = placed_sessions * (commitment.target_units / committed_sessions)
+
+    return {
+        **alloc,
+        "per_day": per_day,
+        "source": "manual",
+        "placed_sessions": placed_sessions,
+        # Distinct from `capped`: the arithmetic cap says the week does not fit,
+        # this says the user stacked one day above what the cap allows. Both are
+        # worth surfacing and they are not the same statement.
+        "manual_over_cap": per_day > alloc["cap_value"] if alloc["cap_value"] else False,
+    }

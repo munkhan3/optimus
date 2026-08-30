@@ -14,7 +14,9 @@ from __future__ import annotations
 from fastapi import HTTPException
 from sqlmodel import Session
 
-from ..models import Goal, Milestone, OpenGap, Trackable
+from ..models import Goal, Milestone, OpenGap, Trackable, _utcnow
+
+Completable = Goal | Milestone | Trackable
 
 
 def check_activation(goal: Goal) -> None:
@@ -77,3 +79,25 @@ def gap_for_estimated_units(
     )
     db.add(gap)
     return gap
+
+
+def stamp_completion(node: Completable) -> None:
+    """Keep completed_at consistent with status on every write path.
+
+    Status is mutated in place, so without this the schema records *that* work
+    finished and never *when* -- which makes "what did I finish this month"
+    unanswerable and leaves a planned-vs-actual roadmap with nothing to draw.
+
+    Reopening clears the stamp rather than keeping the old one. A goal moved
+    back to in_progress is not finished, and a stale completion date is worse
+    than an absent one: absent reads as unknown, stale reads as fact.
+
+    Idempotent by design. Re-saving a row that is already done must not slide
+    its completion date forward to today -- most PATCHes touch some other field
+    entirely, and a date that drifts on every edit is not a record of anything.
+    """
+    if node.status == "done":
+        if node.completed_at is None:
+            node.completed_at = _utcnow()
+    else:
+        node.completed_at = None
