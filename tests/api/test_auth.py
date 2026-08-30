@@ -102,3 +102,28 @@ def test_every_owned_table_is_registered_for_tenant_scoping() -> None:
     assert owned - registered == set(), (
         f"tables with user_id missing from TENANT_MODELS: {sorted(owned - registered)}"
     )
+
+
+def test_claiming_the_legacy_workspace_adopts_every_owned_table(client: TestClient) -> None:
+    """The claim list used to be hand-written and had fallen behind.
+
+    `area` was missing from it, and area.user_id cascades from app_user -- so
+    registering the first account deleted the legacy user and took every area
+    with it. The list is now derived from db.TENANT_MODELS, which carries its
+    own completeness guard, so this asserts the outcome rather than the list.
+    """
+    client.post("/api/areas", json={"name": "Health"})
+    client.post("/api/goals", json={
+        "title": "Legacy goal", "kind": "goal",
+        "definition_of_done": "It is complete", "activation": "parked",
+    })
+    client.put("/api/dashboard/layout", json={
+        "widgets": [{"i": "legacy", "kind": "goal_progress", "x": 0, "y": 0, "w": 4, "h": 4}]
+    })
+
+    token = _register(client, "claimant@example.com")
+    client.headers["Authorization"] = f"Bearer {token}"
+
+    assert [a["name"] for a in client.get("/api/areas").json()] == ["Health"]
+    assert [g["title"] for g in client.get("/api/goals").json()] == ["Legacy goal"]
+    assert [w["i"] for w in client.get("/api/dashboard/layout").json()["widgets"]] == ["legacy"]

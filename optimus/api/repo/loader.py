@@ -213,3 +213,49 @@ def days_since_last_session(db: Session, trackable_id: int, today: date) -> int 
     if last is None:
         return None
     return (today - last.date()).days
+
+
+def current_period_start(goal: Goal | None, today: date) -> date | None:
+    """The first day of the reset window containing `today` (§12).
+
+    Returns None for anything that is not a recurring commitment, which is the
+    caller's signal to leave remaining-work cumulative.
+
+    A seven-day period anchors to Monday rather than to the goal's birthday, so
+    "six gym sessions a week" resets on the same boundary as the capacity week
+    and the weekly commitment. Anchoring it to whenever the goal happened to be
+    created would put the reset mid-week and make the period row on the
+    commitment grid disagree with every other weekly number in the app.
+
+    Other period lengths have no such shared boundary to borrow, so they step
+    from the goal's creation date.
+    """
+    if goal is None or goal.pace_mode != "reset_period" or not goal.reset_period_days:
+        return None
+
+    days = goal.reset_period_days
+    if days == 7:
+        return week_start(today)
+
+    anchor = goal.created_at.date()
+    if today < anchor:
+        return anchor
+    elapsed = (today - anchor).days
+    return anchor + timedelta(days=(elapsed // days) * days)
+
+
+def completed_units_since(db: Session, trackable_id: int, since: date) -> float:
+    """SUM(actual_output) on or after `since`.
+
+    The authoritative total is the sessions table; trackable.completed_units is
+    only a lifetime cache of it (AC7). For a recurring commitment the lifetime
+    figure is the wrong number entirely -- it grows forever while the target
+    resets every period -- so the period figure has to be recomputed here.
+    """
+    total = db.exec(
+        select(func.coalesce(func.sum(WorkSession.actual_output), 0.0))
+        .where(WorkSession.trackable_id == trackable_id)
+        .where(WorkSession.actual_output.is_not(None))
+        .where(func.date(WorkSession.started_at) >= since)
+    ).one()
+    return float(total or 0.0)

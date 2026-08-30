@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 
 from google.genai import types
+import logging
 from pydantic import BaseModel, Field
 
 from .client import generate, max_tokens, to_contents
@@ -119,6 +120,9 @@ def next_turn(
     )
 
 
+log = logging.getLogger(__name__)
+
+
 def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> InterviewTurn:
 
     system = f"Today is {today}.\n\n{INTERVIEW_RULES}"
@@ -142,5 +146,22 @@ def _turn(today: str, messages: list[dict], current: IngestProposal | None) -> I
         ),
     )
     if response.parsed is None:
-        raise RuntimeError("the model returned no parsed turn")
+        # Log as much of the raw response as we can for debugging. The
+        # provider's parser can fail for malformed JSON or schema
+        # mismatches; surfacing the raw response helps diagnose why (e.g.
+        # unexpected fields, type errors, or truncated output).
+        try:
+            log.error("LLM response had no parsed content. repr(response)=%s", repr(response))
+            # Attempt to log candidate text if present on the response object.
+            cand = getattr(response, "candidates", None)
+            if cand is not None:
+                log.error("LLM candidates: %s", cand)
+            # Some client versions expose `output` / `text` fields; log whatever exists.
+            if hasattr(response, "output"):
+                log.error("LLM output: %s", getattr(response, "output"))
+            if hasattr(response, "text"):
+                log.error("LLM text: %s", getattr(response, "text"))
+        except Exception:
+            log.exception("Failed while logging raw LLM response")
+        raise RuntimeError(f"the model returned no parsed turn; raw_response={repr(response)}")
     return response.parsed

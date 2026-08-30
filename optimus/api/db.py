@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from fastapi import Request
-from sqlalchemy import Engine, event, text
+from sqlalchemy import Engine, event
 from sqlalchemy.orm import with_loader_criteria
 from sqlmodel import Session, create_engine
 
@@ -14,12 +14,14 @@ from .models import (
     Baseline,
     Capacity,
     DailyPlan,
+    DashboardLayout,
     Goal,
     GoalBudget,
     Milestone,
     OpenGap,
     PlanItem,
     ProgressCheckRow,
+    SessionAllocation,
     Task,
     Trackable,
     WeeklyCommitment,
@@ -30,7 +32,8 @@ from .settings import get_settings
 _engine: Engine | None = None
 TENANT_MODELS = (
     Area, Goal, Milestone, Trackable, Task, Capacity, GoalBudget, WeeklyCommitment,
-    WorkSession, ProgressCheckRow, Baseline, OpenGap, DailyPlan, PlanItem,
+    SessionAllocation, WorkSession, ProgressCheckRow, Baseline, OpenGap, DailyPlan,
+    PlanItem, DashboardLayout,
 )
 
 

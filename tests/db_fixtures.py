@@ -30,8 +30,12 @@ TEST_TOKEN = "test-token"
 TABLES = (
     "auth_session", "app_user",
     "plan_item", "daily_plan", "progress_check", "work_session",
-    "weekly_commitment", "baseline", "open_gap", "task", "trackable",
-    "milestone", "goal_budget", "capacity", "goal",
+    "weekly_commitment", "session_allocation", "baseline", "open_gap",
+    "task", "trackable", "milestone", "goal_budget", "capacity", "goal",
+    # area is referenced BY goal, so truncating goal does not cascade to it;
+    # dashboard_layout is referenced by nothing at all. Both have to be named
+    # here explicitly or they accumulate across tests.
+    "area", "dashboard_layout",
 )
 
 

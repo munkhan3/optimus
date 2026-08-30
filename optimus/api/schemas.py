@@ -12,7 +12,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # -------------------------------------------------------------------- accounts
 
 
@@ -83,6 +82,39 @@ class MilestoneCreate(BaseModel):
     # §10: work with no natural counter is budgeted in sessions, not fake units.
     planned_sessions: int | None = None
     exploratory: bool = False
+
+
+class MilestoneUpdate(BaseModel):
+    """Narrow on purpose.
+
+    goal_id is absent: re-parenting a milestone moves work between goals and
+    silently rewrites the history of both, so it is not a PATCH.
+    """
+
+    title: str | None = None
+    definition_of_done: str | None = Field(default=None, min_length=1)
+    deadline: date | None = None
+    blocked_by: int | None = None
+    planned_sessions: int | None = None
+    status: str | None = None
+    verified: bool | None = None
+
+
+class TrackableUpdate(BaseModel):
+    """Narrow on purpose.
+
+    total_units is absent: changing scope is a rebaseline (§17), which records
+    what was dropped and why. Letting it through here would be exactly the
+    silent drift the rebaseline flow exists to prevent.
+
+    completed_units is absent too -- it is a trigger-maintained cache of
+    SUM(actual_output) and the only honest way to move it is to log a session.
+    """
+
+    title: str | None = None
+    target_date: date | None = None
+    prior_pace: float | None = None
+    status: str | None = None
 
 
 class TrackableCreate(BaseModel):
@@ -205,3 +237,43 @@ class GapAnswer(BaseModel):
 
 class Envelope(BaseModel):
     data: Any
+
+
+# ------------------------------------------------------------------ dashboard
+
+
+class WidgetPlacement(BaseModel):
+    """One widget on the grid.
+
+    `kind` is not validated against an enum here. The widget catalogue is a
+    frontend concern that will churn, and a server-side whitelist would turn
+    every new widget into a deploy-ordering problem. An unknown kind renders as
+    a placeholder and is preserved on save (see the layout router).
+    """
+
+    i: str                      # stable id, unique within the layout
+    kind: str
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+    w: int = Field(gt=0)
+    h: int = Field(gt=0)
+    # Per-widget settings: which goal, how many weeks, which task type.
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class LayoutSet(BaseModel):
+    widgets: list[WidgetPlacement]
+
+
+class AllocationSet(BaseModel):
+    """N sessions of one piece of work, on one day. No clock time (§36.1)."""
+
+    trackable_id: int | None = None
+    milestone_id: int | None = None
+    plan_date: date
+    sessions: int = Field(ge=0)
+
+
+class AllocationsSet(BaseModel):
+    week_start: date
+    allocations: list[AllocationSet]

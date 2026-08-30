@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -21,6 +21,7 @@ from .routers import (
     auth,
     baselines,
     capacity,
+    dashboard,
     goals,
     intake,
     planning,
@@ -50,6 +51,7 @@ for router in (
     baselines.router,
     capacity.router,
     planning.router,
+    dashboard.router,
     assistant.router,
     reviews.router,
     intake.router,
@@ -90,5 +92,19 @@ if FRONTEND_DIST.is_dir():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
-        """Serve the SPA shell for any non-API path so client routing works."""
+        """Serve the SPA shell for any non-API path so client routing works.
+
+        The /api guard is load-bearing, not defensive. Without it this route
+        answers *unknown API paths* with index.html and a 200, so the client
+        calls .json() on HTML and reports a parser error -- a message that says
+        nothing about the actual problem, which is almost always that the
+        running server predates the endpoint the page is asking for. A 404 with
+        the path in it says that outright.
+        """
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(
+                404,
+                f"No such API endpoint: /{full_path}. If the page expects it, "
+                "the running server is older than the frontend it is serving.",
+            )
         return FileResponse(FRONTEND_DIST / "index.html")

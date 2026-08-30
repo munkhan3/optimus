@@ -156,7 +156,7 @@ function CapacitySection({
       <SectionLabel>This Week</SectionLabel>
       <div className="mt-2 flex items-baseline gap-3 text-sm">
         <span className="text-2xl font-bold">{capacity.sessions_available}</span>
-        <span className="text-muted">sessions available</span>
+        <span className="text-muted">Sessions Available</span>
         {capacity.over_committed && <Tag tone="bad">Over-Committed</Tag>}
       </div>
 

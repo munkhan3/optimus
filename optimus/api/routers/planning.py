@@ -11,9 +11,9 @@ and the user stops trusting it. Stability is worth more than daily optimality.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from ..auth import get_user_session as get_session
@@ -22,12 +22,13 @@ from ..models import (
     DailyPlan,
     Milestone,
     PlanItem,
+    SessionAllocation,
     Trackable,
     WeeklyCommitment,
 )
 from ..repo import planning_service
 from ..repo.loader import week_start
-from ..schemas import CommitmentSet, PlanItemAction
+from ..schemas import AllocationsSet, CommitmentSet, PlanItemAction
 from ..settings import get_metrics_config
 
 router = APIRouter(prefix="/api/planning", tags=["planning"])
@@ -210,14 +211,24 @@ def generate_day(
 
     days_remaining = max(WORKING_DAYS_IN_WEEK - day.weekday(), 1)
 
+    # The week as the user shaped it, if they shaped it. Absent any rows this
+    # is empty and every allocation below falls through to §25.5's arithmetic,
+    # which is what makes manual placement an override rather than a new
+    # default.
+    placed = _allocations_for(db, capacity.id, day)
+
     # Ordered by the FROZEN weekly score. No re-ranking (D9).
     ordered = sorted(commitments, key=lambda c: -(c.score or 0.0))
 
-    items, capped_any, shortfall = [], False, 0.0
+    items, capped_any, shortfall, manual_any = [], False, 0.0, False
     for position, commitment in enumerate(ordered, start=1):
         alloc = planning_service.day_allocation(
             db, commitment, day, config, WORKING_DAYS_IN_WEEK, days_remaining
         )
+        hand_placed = placed.get(_commitment_key(commitment))
+        if hand_placed is not None:
+            alloc = planning_service.apply_manual_allocation(alloc, hand_placed, commitment)
+            manual_any = True
         capped_any = capped_any or alloc["capped"]
         shortfall += max(alloc["remaining"], 0.0)
 
@@ -257,6 +268,10 @@ def generate_day(
         # rather than issuing a day the user will not complete.
         "catch_up_cap_binding": capped_any,
         "rebaseline_suggested": capped_any,
+        # The day was shaped by hand rather than by §25.5. Surfaced so the UI
+        # can say so -- a plan the user built and a plan the system built should
+        # not look identical.
+        "manually_allocated": manual_any,
     }
 
 
@@ -318,3 +333,186 @@ def record_action(
     db.commit()
     db.refresh(item)
     return item.model_dump()
+
+
+# ------------------------------------------------------- manual week shaping
+
+
+def _commitment_key(row) -> tuple[str, int]:
+    return ("t", row.trackable_id) if row.trackable_id is not None else ("m", row.milestone_id)
+
+
+def _allocations_for(db: Session, capacity_id: int, day: date) -> dict[tuple[str, int], int]:
+    rows = db.exec(
+        select(SessionAllocation)
+        .where(SessionAllocation.capacity_id == capacity_id)
+        .where(SessionAllocation.plan_date == day)
+    ).all()
+    return {_commitment_key(r): r.sessions for r in rows}
+
+
+@router.get("/allocations")
+def get_allocations(
+    week_start_date: date | None = Query(default=None, alias="week_start"),
+    db: Session = Depends(get_session),
+) -> dict:
+    """The week as placed by hand, alongside what was committed to it.
+
+    Both halves are returned together because the only question the week board
+    asks is whether they match: every committed session should end up on some
+    day, and the tray of unplaced sessions is that difference made visible.
+    """
+    day = week_start_date or _today()
+    capacity = _capacity_for(db, day)
+    start = capacity.week_start
+
+    allocations = db.exec(
+        select(SessionAllocation)
+        .where(SessionAllocation.capacity_id == capacity.id)
+        .order_by(SessionAllocation.plan_date)
+    ).all()
+    commitments = db.exec(
+        select(WeeklyCommitment).where(WeeklyCommitment.capacity_id == capacity.id)
+    ).all()
+
+    placed_by_key: dict[tuple[str, int], int] = {}
+    for row in allocations:
+        key = _commitment_key(row)
+        placed_by_key[key] = placed_by_key.get(key, 0) + row.sessions
+
+    return {
+        "week_start": start.isoformat(),
+        "capacity_id": capacity.id,
+        "session_minutes": capacity.session_minutes or get_metrics_config().session.minutes,
+        "allocations": [
+            {
+                "trackable_id": r.trackable_id,
+                "milestone_id": r.milestone_id,
+                "plan_date": r.plan_date.isoformat(),
+                "sessions": r.sessions,
+            }
+            for r in allocations
+        ],
+        "commitments": [
+            {
+                "trackable_id": c.trackable_id,
+                "milestone_id": c.milestone_id,
+                "label": _label_for(db, c),
+                "committed_sessions": c.committed_sessions,
+                "target_units": c.target_units,
+                "placed_sessions": placed_by_key.get(_commitment_key(c), 0),
+            }
+            for c in commitments
+        ],
+    }
+
+
+@router.put("/allocations")
+def set_allocations(body: AllocationsSet, db: Session = Depends(get_session)) -> dict:
+    """Replace the week's hand placement.
+
+    Warnings are returned, never enforced. A user who wants to front-load a week
+    against the catch-up cap is making a decision the system is entitled to
+    question and not entitled to refuse (D11) -- so this says what it costs and
+    then does it.
+    """
+    capacity = _capacity_for(db, body.week_start)
+    start = capacity.week_start
+    end = start + timedelta(days=7)
+
+    for a in body.allocations:
+        if (a.trackable_id is None) == (a.milestone_id is None):
+            raise HTTPException(
+                422, "each allocation targets exactly one of trackable_id or milestone_id"
+            )
+        if not (start <= a.plan_date < end):
+            raise HTTPException(
+                422,
+                f"{a.plan_date} is outside the week of {start}. An allocation belongs "
+                "to the week whose capacity it spends.",
+            )
+
+    for stale in db.exec(
+        select(SessionAllocation).where(SessionAllocation.capacity_id == capacity.id)
+    ).all():
+        db.delete(stale)
+
+    # Zero-session rows carry no information and would only accumulate. Dropping
+    # a block is the absence of a row, not a row saying zero.
+    kept = [a for a in body.allocations if a.sessions > 0]
+    for a in kept:
+        db.add(
+            SessionAllocation(
+                capacity_id=capacity.id,
+                trackable_id=a.trackable_id,
+                milestone_id=a.milestone_id,
+                plan_date=a.plan_date,
+                sessions=a.sessions,
+                updated_at=datetime.now(UTC),
+            )
+        )
+    db.commit()
+
+    return {**get_allocations(start, db), "warnings": _allocation_warnings(db, capacity, kept)}
+
+
+def _allocation_warnings(db: Session, capacity: Capacity, allocations: list) -> list[dict]:
+    config = get_metrics_config()
+    commitments = db.exec(
+        select(WeeklyCommitment).where(WeeklyCommitment.capacity_id == capacity.id)
+    ).all()
+
+    placed: dict[tuple[str, int], int] = {}
+    per_day: dict[date, int] = {}
+    for a in allocations:
+        key = ("t", a.trackable_id) if a.trackable_id is not None else ("m", a.milestone_id)
+        placed[key] = placed.get(key, 0) + a.sessions
+        per_day[a.plan_date] = per_day.get(a.plan_date, 0) + a.sessions
+
+    warnings = []
+    for c in commitments:
+        key = _commitment_key(c)
+        got = placed.get(key, 0)
+        if got != c.committed_sessions:
+            warnings.append(
+                {
+                    "kind": "placement_mismatch",
+                    "trackable_id": c.trackable_id,
+                    "milestone_id": c.milestone_id,
+                    "label": _label_for(db, c),
+                    "committed_sessions": c.committed_sessions,
+                    "placed_sessions": got,
+                    "detail": (
+                        f"{got} of {c.committed_sessions} committed sessions placed."
+                    ),
+                }
+            )
+
+    # The declared week divided evenly is the reference a day is "heavy" against.
+    minutes = capacity.session_minutes or config.session.minutes
+    declared = int(capacity.available_hours * 60 // minutes)
+    even_day = declared / 7 if declared else 0.0
+    cap = even_day * config.redistribution.catch_up_cap
+    for day, count in sorted(per_day.items()):
+        if cap and count > cap:
+            warnings.append(
+                {
+                    "kind": "day_over_cap",
+                    "plan_date": day.isoformat(),
+                    "sessions": count,
+                    "cap": round(cap, 2),
+                    "detail": (
+                        f"{count} sessions on {day} exceeds the {config.redistribution.catch_up_cap}x "
+                        "catch-up cap. If the week only fits this way, it does not fit."
+                    ),
+                }
+            )
+    return warnings
+
+
+def _label_for(db: Session, commitment) -> str | None:
+    if commitment.trackable_id is not None:
+        row = db.get(Trackable, commitment.trackable_id)
+    else:
+        row = db.get(Milestone, commitment.milestone_id)
+    return row.title if row else None

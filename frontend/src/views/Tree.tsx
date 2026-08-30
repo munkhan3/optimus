@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ViewHint } from "../components/ViewChrome";
 import { api, ApiError } from "../lib/api";
 import { GoalGraph } from "../components/GoalGraph";
 import { Banner, Button, Empty, SectionLabel, Skeleton, Stat, Tag } from "../components/Primitives";
@@ -296,7 +297,7 @@ export function Tree({ onStarted, sessionOpen }: { onStarted: () => void; sessio
                 <Stat
                   label="Committed"
                   value={selected.sessions == null ? "—" : `${num(selected.sessions, 0)} sessions`}
-                  hint="this week"
+                  hint="This Week"
                 />
                 <Stat
                   label="Progress"
@@ -322,9 +323,9 @@ export function Tree({ onStarted, sessionOpen }: { onStarted: () => void; sessio
       )}
 
       {!selected && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 text-center text-[12px] text-faint">
+        <ViewHint>
           Hover to trace a branch, click to keep it lit. Drag to pan, scroll to zoom.
-        </div>
+        </ViewHint>
       )}
     </div>
   );

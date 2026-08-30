@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ViewBarLeft, ViewBarRight, ViewButton, ViewSwitch } from "./ViewChrome";
 import {
   type Cluster,
   type Focus,
   type GraphNode,
   type PlacedNode,
   type ViewMode,
+  FIT_AXIS,
   NODE_GAP,
   VIEW_MODES,
   layoutGraph,
@@ -18,16 +20,15 @@ import {
   snapHome,
   step,
 } from "../lib/graphMotion";
-import { usePanZoom } from "../lib/usePanZoom";
+import { type View, usePanZoom } from "../lib/usePanZoom";
 import { pointInPolygon } from "../lib/voronoi";
 
 /**
  * The goal graph as a map.
  *
- * Separate from GoalTree, which still serves intake: that view grows one node
- * at a time left-to-right and its layered layout is the right shape for
- * watching a tree get built. This one is for reading a graph that already
- * exists.
+ * One canvas for both callers: the persisted graph in the Tree tab, and the
+ * proposal being built during intake. Intake pins the arrangement and passes
+ * the keys that arrived this turn; everything else is the same picture.
  *
  * The dots carry no colour. Health is a continuous value and a filled circle is
  * a weak channel for one; worse, a single arrangement can only ever answer a
@@ -42,6 +43,26 @@ import { pointInPolygon } from "../lib/voronoi";
 
 /** How close the cursor must be to capture a node. */
 const CAPTURE_RADIUS = 34;
+
+/** Where the top of the ground sits when a view is anchored to it. Enough of a
+    margin that the captions, which ride just above it, are clear of the frame. */
+const TOP_ANCHOR = 44;
+
+/**
+ * Keep one axis covered by the content.
+ *
+ * `pos` is where graph zero sits on the screen along this axis, and the content
+ * is centred on graph zero, so it covers [pos - half, pos + half]. Anything
+ * smaller than the viewport is centred; anything larger is held so neither edge
+ * can be dragged inside the frame. The effect is a lock at the fitted zoom that
+ * loosens into ordinary panning as you zoom in -- which is the behaviour you
+ * want from an axis that carries the whole meaning of the arrangement.
+ */
+function coverAxis(pos: number, size: number, extent: number, k: number): number {
+  const half = extent * k;
+  if (2 * half <= size) return size / 2;
+  return Math.min(half, Math.max(size - half, pos));
+}
 
 /** One fill for every dot. Level is carried by size, nothing by hue. */
 const NODE_FILL = "var(--color-ink)";
@@ -60,6 +81,9 @@ export function GoalGraph({
   onFocus,
   selectedKey,
   onSelect,
+  mode: pinnedMode,
+  highlight,
+  fitTo = "canvas",
   className = "",
 }: {
   clusters: Cluster[];
@@ -67,13 +91,41 @@ export function GoalGraph({
   onFocus: (f: Focus) => void;
   selectedKey: string | null;
   onSelect: (node: GraphNode | null) => void;
+  /** Fixes the arrangement and hides the switcher. Intake pins "hierarchy":
+      there are no areas yet, and pace would file everything under no-signal. */
+  mode?: ViewMode;
+  /** Keys that arrived this turn. Haloed once, so growth is legible. */
+  highlight?: Set<string>;
+  /**
+   * What the view is scaled to. "canvas" keeps the ground constant, which is
+   * what makes the Tree tab's mode toggle a rearrangement rather than a
+   * rescale. "nodes" scales to the dots themselves -- during intake there are
+   * a handful of them in a half-height frame, and fitting the whole canvas
+   * shrinks the labels past reading.
+   */
+  fitTo?: "canvas" | "nodes";
   className?: string;
 }) {
-  const [mode, setMode] = useState<ViewMode>(storedMode);
+  const [chosenMode, setMode] = useState<ViewMode>(storedMode);
+  const mode = pinnedMode ?? chosenMode;
   const layout = useMemo(() => layoutGraph(clusters, mode), [clusters, mode]);
-  const { view, setView, toGraph, handlers, isPanning } = usePanZoom();
 
   const frame = useRef<HTMLDivElement>(null);
+
+  const axis = FIT_AXIS[mode];
+  const clamp = useCallback(
+    (v: View): View => {
+      const box = frame.current?.getBoundingClientRect();
+      if (!box || axis === "both") return v;
+      return axis === "width"
+        ? { ...v, x: coverAxis(v.x, box.width, layout.extentX, v.k) }
+        : { ...v, y: coverAxis(v.y, box.height, layout.extentY, v.k) };
+    },
+    [axis, layout.extentX, layout.extentY],
+  );
+
+  const { view, setView, toGraph, handlers, isPanning } = usePanZoom(undefined, clamp);
+
   const bodies = useRef(new Map<string, Body>());
   const nodeEls = useRef(new Map<string, SVGGElement | null>());
   const edgeEls = useRef(new Map<string, SVGPathElement | null>());
@@ -261,22 +313,66 @@ export function GoalGraph({
   const fit = useCallback(() => {
     const box = frame.current?.getBoundingClientRect();
     if (!box) return;
-    // Fit each axis against its own extent. The extents are the same in every
-    // mode -- the regions always tile the same canvas -- so switching views
-    // never rescales the picture underneath you.
-    const k = Math.min(
-      (box.width * 0.94) / (layout.extentX * 2),
-      (box.height * 0.94) / (layout.extentY * 2),
-      2.2,
-    );
-    setView({ k, x: box.width / 2, y: box.height / 2 });
-  }, [layout.extentX, layout.extentY, setView]);
+
+    if (fitTo === "nodes" && layout.nodes.length > 0) {
+      // Room for the label that hangs under a dot, so fitting never clips one.
+      const PAD = 46;
+      const xs = layout.nodes.map((p) => p.x);
+      const ys = layout.nodes.map((p) => p.y);
+      const x0 = Math.min(...xs) - PAD;
+      const x1 = Math.max(...xs) + PAD;
+      const y0 = Math.min(...ys) - PAD;
+      const y1 = Math.max(...ys) + PAD;
+      const k = Math.min((box.width * 0.94) / (x1 - x0), (box.height * 0.94) / (y1 - y0), 2.2);
+      setView({
+        k,
+        x: box.width / 2 - ((x0 + x1) / 2) * k,
+        y: box.height / 2 - ((y0 + y1) / 2) * k,
+      });
+      return;
+    }
+
+    /* The extents are the same in every mode -- the regions always tile the
+       same canvas -- so switching views rearranges the picture without
+       rescaling it. What changes is which axis is fitted: the one the
+       arrangement is read along fills the frame exactly, with no margin,
+       because a margin there is ground the view is claiming does not exist. */
+    const k =
+      axis === "width"
+        ? box.width / (layout.extentX * 2)
+        : axis === "height"
+          ? /* The height is what Levels is fitted to, but not at the cost of
+               slicing the outermost titles off the sides: where the tree is
+               wider than the frame at that zoom, the width wins and the bands
+               simply run further up and down instead. */
+            Math.min(
+              box.height / (layout.extentY * 2),
+              box.width / (layout.extentX * 2),
+            )
+          : Math.min(
+              (box.width * 0.94) / (layout.extentX * 2),
+              (box.height * 0.94) / (layout.extentY * 2),
+              2.2,
+            );
+
+    /* The free axis anchors to the top of the ground rather than centring it.
+       Nothing says a view has to fit: what matters in Pace is that the lane
+       captions and the leaders under them are the first thing you see, and the
+       rest of the column is a scroll away. Centring a column taller than the
+       frame would hide both ends of it instead. */
+    const y =
+      axis === "width" ? TOP_ANCHOR - layout.canvas.y0 * k : box.height / 2;
+    setView({ k, x: box.width / 2, y });
+  }, [layout, fitTo, axis, setView]);
 
   useEffect(() => {
     fit();
-    // Refit only when the shape changes, never on every focus tween -- a focus
-    // change should settle in place, not re-centre the whole map.
-  }, [clusters.length, fit]);
+    // Refit when the shape changes, never on a focus tween -- a focus change
+    // should settle in place, not re-centre the whole map. Node count rather
+    // than cluster count: during intake there is one cluster throughout and
+    // only the nodes multiply, and a view that stayed put would let each new
+    // node appear off-screen at the moment it most needs to be seen.
+  }, [layout.nodes.length, fit]);
 
   /* And refit when the frame itself changes size. Without this, rotating a
      phone or crossing the desktop breakpoint leaves the map anchored to the old
@@ -414,23 +510,28 @@ export function GoalGraph({
               {/* Regions tile the canvas with no gaps, so every patch of ground
                   means something. One colour at two alphas: neighbours separate
                   without a second hue arriving to compete with the dots. */}
+              {/* The border is drawn as well as the fill: at these alphas two
+                  neighbouring washes can be genuinely hard to tell apart, and
+                  the boundary is the thing the view is claiming. Each cell
+                  strokes its own eased corner, so three lines cross at every
+                  junction -- which is why the easing is kept short enough that
+                  what they draw there is a thickening rather than a shape. */}
               {layout.regions.map((r) => (
-                <polygon
+                <path
                   key={r.key}
-                  points={r.points.map(([x, y]) => `${x},${y}`).join(" ")}
+                  d={r.path}
                   fill={r.fill}
                   fillOpacity={r.fillOpacity}
-                  /* The border is drawn as well as the fill. At these alphas
-                     two neighbouring washes can be genuinely hard to tell
-                     apart, and the boundary is the thing the view is claiming
-                     -- it should not depend on the fills being far enough
-                     apart to survive. */
                   stroke="var(--color-line)"
                   strokeWidth={0.75}
-                  strokeOpacity={0.5}
+                  strokeOpacity={0.45}
                   className="pointer-events-none"
                 />
               ))}
+              {/* One caption treatment for all three arrangements: an area's
+                  name is no more important than a band's or a lane's, and three
+                  sizes of the same thing would only look like three kinds of
+                  thing. */}
               {layout.regions.map((r) => (
                 <text
                   key={`label:${r.key}`}
@@ -465,50 +566,39 @@ export function GoalGraph({
                   markRef={(el: SVGGElement | null) => void nodeEls.current.set(p.node.key, el)}
                   hovered={hovered === p.node.key}
                   selected={selectedKey === p.node.key}
+                  fresh={highlight?.has(p.node.key) ?? false}
                   onActivate={() => activate(p)}
                 />
               ))}
             </g>
           </svg>
 
-          {/* Top-left, because Fit and Back own the bottom-right and a control
+          {/* Bottom-left. Opposite corner from Fit and Back, because a control
               that changes what you are looking at should not sit in the same
-              cluster as ones that only change where you are looking. */}
-          <div
-            className="absolute left-4 top-4 flex overflow-hidden rounded-control border border-line bg-surface"
-            role="group"
-            aria-label="Arrangement"
-          >
-            {VIEW_MODES.map((v) => (
-              <button
-                key={v.mode}
-                onClick={() => chooseMode(v.mode)}
-                aria-pressed={mode === v.mode}
-                className={`px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition duration-200 ${
-                  mode === v.mode ? "bg-line/60 text-ink" : "text-muted hover:text-ink"
-                }`}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
+              cluster as ones that only change where you are looking -- and out
+              of the top-left, which belongs to the map: every arrangement
+              captions its first region there, and Levels now fits the height
+              exactly, so the first band's caption starts at the very top edge
+              and was landing underneath this.
 
-          <div className="absolute bottom-4 right-4 flex gap-2">
-            {focus && (
-              <button
-                onClick={() => onFocus(null)}
-                className="rounded-control border border-line bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition duration-200 hover:text-ink"
-              >
-                Back
-              </button>
-            )}
-            <button
-              onClick={fit}
-              className="rounded-control border border-line bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition duration-200 hover:text-ink"
-            >
-              Fit
-            </button>
-          </div>
+              These now come from components/ViewChrome, which the roadmap uses
+              too, so the two full-bleed views cannot drift into slightly
+              different bars. */}
+          {!pinnedMode && (
+            <ViewBarLeft>
+              <ViewSwitch
+                label="Arrangement"
+                value={mode}
+                onChange={(next) => chooseMode(next)}
+                options={VIEW_MODES.map((v) => ({ value: v.mode, label: v.label }))}
+              />
+            </ViewBarLeft>
+          )}
+
+          <ViewBarRight>
+            {focus && <ViewButton onClick={() => onFocus(null)}>Back</ViewButton>}
+            <ViewButton onClick={fit}>Fit</ViewButton>
+          </ViewBarRight>
         </>
       )}
     </div>
@@ -529,6 +619,7 @@ const GraphMark = ({
   selected,
   faded,
   lit,
+  fresh,
   onActivate,
 }: {
   markRef: (el: SVGGElement | null) => void;
@@ -537,6 +628,7 @@ const GraphMark = ({
   selected: boolean;
   faded: boolean;
   lit: boolean;
+  fresh: boolean;
   onActivate: () => void;
 }) => {
   const { node, radius } = placed;
@@ -562,6 +654,26 @@ const GraphMark = ({
       }
       className="transition-opacity duration-200"
     >
+      {/* A node that just arrived rings once and stops. White, like every other
+          emphasis here -- a hue on the dot would say something about the node
+          itself, and "new this turn" is a fact about the conversation. */}
+      {fresh && (
+        <circle
+          r={r}
+          fill="none"
+          stroke="var(--color-pure)"
+          strokeWidth={1}
+          /* fill-box, or the scale would pivot on the centre of the whole
+             viewport instead of the centre of this dot. */
+          style={{
+            animation: "markIn 900ms ease-out 1 both",
+            transformBox: "fill-box",
+            transformOrigin: "center",
+          }}
+          className="pointer-events-none"
+        />
+      )}
+
       {/* Selection is a halo set well clear of the dot, not an outline on it. */}
       {selected && (
         <circle r={r + 5} fill="none" stroke="var(--color-pure)" strokeWidth={1} opacity={0.55} />

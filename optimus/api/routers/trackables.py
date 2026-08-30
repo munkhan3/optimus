@@ -10,8 +10,8 @@ from sqlmodel import Session, select
 from ..auth import get_user_session as get_session
 from ..models import Baseline, Milestone, Trackable
 from ..repo import metrics_service
-from ..repo.write_rules import gap_for_estimated_units
-from ..schemas import TrackableCreate
+from ..repo.write_rules import gap_for_estimated_units, stamp_completion
+from ..schemas import TrackableCreate, TrackableUpdate
 from ..settings import get_metrics_config
 
 router = APIRouter(prefix="/api/trackables", tags=["trackables"])
@@ -84,3 +84,25 @@ def list_baselines(trackable_id: int, db: Session = Depends(get_session)) -> dic
 @router.get("/{trackable_id}/session-minutes")
 def default_session_minutes() -> dict:
     return {"minutes": get_metrics_config().session.minutes}
+
+
+@router.patch("/{trackable_id}")
+def update_trackable(
+    trackable_id: int, body: TrackableUpdate, db: Session = Depends(get_session)
+) -> dict:
+    """Status was previously unwritable, the same gap milestones had.
+
+    Scope is deliberately not editable here. Changing total_units is a
+    rebaseline (§17) and has to record what was dropped and why -- routing it
+    through a PATCH would be the silent drift that flow exists to prevent.
+    """
+    trackable = db.get(Trackable, trackable_id)
+    if trackable is None:
+        raise HTTPException(404, f"trackable {trackable_id} not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(trackable, field, value)
+    stamp_completion(trackable)
+    db.add(trackable)
+    db.commit()
+    db.refresh(trackable)
+    return metrics_service.trackable_view(db, trackable, _today())

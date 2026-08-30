@@ -26,9 +26,8 @@ import {
   type Site,
   clampIntoPolygon,
   clipToRect,
-  polygonBounds,
   polygonCentroid,
-  topEdgeAt,
+  smoothTiling,
   powerCells,
   rectPolygon,
 } from "./voronoi";
@@ -42,6 +41,28 @@ export const VIEW_MODES: { mode: ViewMode; label: string }[] = [
   { mode: "hierarchy", label: "Levels" },
   { mode: "pace", label: "Pace" },
 ];
+
+/**
+ * The axis each arrangement is read along, and therefore the one that is
+ * spoken for.
+ *
+ * Levels stacks three bands and puts nothing above or below them: the whole
+ * story is vertical, so the height is the thing to fit and the width is where
+ * a wide tree runs on. Pace is the transpose -- four lanes across, deep in
+ * whatever direction the tree happens to be -- so the width is fitted and the
+ * depth is where you scroll. Areas partitions the plane in both directions at
+ * once and has no preferred axis, so it fits whole and pans freely.
+ *
+ * The fitted axis is not merely where the view starts. It stays covered: pans
+ * and zooms are clamped so that axis can never be dragged off into empty
+ * ground, which is what keeps "up and down" meaningful in Pace and "left and
+ * right" meaningful in Levels.
+ */
+export const FIT_AXIS: Record<ViewMode, "both" | "width" | "height"> = {
+  areas: "both",
+  hierarchy: "height",
+  pace: "width",
+};
 
 export interface GraphNode {
   key: string;
@@ -120,6 +141,16 @@ export interface Region {
   /** How the caption sits on labelX. A band hangs its name off the left edge;
       a lane or a cell centres it over the column it describes. */
   align: "start" | "middle";
+  /**
+   * Cell boundaries are arbitrary -- a bisector between two clumps -- so they
+   * are drawn as curves that sweep through the junctions. A lane or a band
+   * boundary is a threshold, and a threshold that wanders is a lie about where
+   * it sits, so those stay straight.
+   */
+  shape: "cell" | "rect";
+  /** The outline as an SVG path. Cells share their curves with their
+      neighbours, so the tiling survives the smoothing exactly. */
+  path: string;
   /** CSS colour for the fill, and how faint to keep it. */
   fill: string;
   fillOpacity: number;
@@ -131,12 +162,30 @@ export interface Layout {
   nodes: PlacedNode[];
   edges: PlacedEdge[];
   regions: Region[];
+  /** The rectangle the arrangement partitions. The view anchors to it. */
+  canvas: Rect;
   /** Half-extents per axis, for fitting. Constant: regions tile the canvas. */
   extentX: number;
   extentY: number;
 }
 
 /* ----------------------------------------------------------------- geometry */
+
+/**
+ * How much of each cell edge is given over to easing the junction it runs into.
+ *
+ * The corners bulge past the junction rather than cutting back from it, so this
+ * is also how far three cells overlap where they meet -- small enough that the
+ * overlap reads as a slight warmth in the wash rather than as a shape.
+ */
+const CELL_CORNER = 10;
+
+/**
+ * Half the width a goal's title takes at rest.
+ *
+ * GraphMark truncates to 22 characters at 10px, so this is that at its widest.
+ */
+const GOAL_LABEL_REACH = 64;
 
 /** Size is the whole level signal now that the dots carry no colour. */
 const RADIUS: Record<NodeKind, number> = { goal: 9, milestone: 6.5, trackable: 5 };
@@ -436,19 +485,18 @@ function layoutAreas(clusters: Cluster[], canvas: Rect): Parts {
     const core = clipToRect(points, canvas);
     const [cx, cy] = polygonCentroid(core);
     centres.push([cx, cy]);
-    // Captions ride the top edge of their own cell rather than its middle,
-    // where the clump itself lives -- but measured at the caption's own x, not
-    // from the bounding box, whose top corner is usually somebody else's
-    // ground once the boundaries run at an angle.
-    const top = topEdgeAt(core, cx) ?? polygonBounds(core).y0;
     return {
       key: `area:${cluster.areaId}`,
       label: cluster.name,
       points,
       core,
+      // Placed once the dots are down -- see the pass at the end of this
+      // function. Until then the centre stands in.
       labelX: cx,
-      labelY: top + 20,
+      labelY: cy,
       align: "middle",
+      shape: "cell",
+      path: "",
       // An area is a category, so it gets a category's colour -- the same
       // series token the rest of the app already files it under.
       fill: cluster.color,
@@ -496,6 +544,32 @@ function layoutAreas(clusters: Cluster[], canvas: Rect): Parts {
           : spread * (Math.sqrt((gi + 0.6) / cluster.goals.length) + 0.5);
       place(goal, ox + Math.cos(ga) * gr, oy + Math.sin(ga) * gr, cluster);
     });
+  });
+
+  /*
+   * One rule for every caption: centred on its own clump, sitting just above
+   * it.
+   *
+   * Uniformity is the whole point. A caption that hunts for somewhere it fits
+   * ends up in a different relationship to its ground in every cell -- one
+   * hugging an edge, one floating in the middle -- and then none of them reads
+   * as belonging to anything in particular. Measured from the dots rather than
+   * from the cell, because the dots are what the name is actually naming, and
+   * clamped back inside the cell in the rare case that a clump sits so high
+   * there is no room above it.
+   */
+  regions.forEach((region, ci) => {
+    const own = nodes.filter((n) => n.areaId === clusters[ci].areaId);
+    if (own.length === 0) return;
+    let cx = 0;
+    let top = Infinity;
+    for (const n of own) {
+      cx += n.x;
+      top = Math.min(top, n.y - n.radius);
+    }
+    const [lx, ly] = clampIntoPolygon(cx / own.length, top - 30, region.core, 26);
+    region.labelX = lx;
+    region.labelY = ly;
   });
 
   return { nodes, edges: collectEdges(clusters.flatMap((c) => c.goals)), regions };
@@ -667,6 +741,8 @@ function layoutHierarchy(clusters: Cluster[], canvas: Rect): Parts {
       labelX: canvas.x0 + 22,
       labelY: y0 + 20,
       align: "start",
+      shape: "rect",
+      path: "",
       /* One hue across all three, deepening with the level. Depth is a ladder,
          not a set of categories, and three separate colours would claim these
          bands differ in kind rather than in how far down you have gone. */
@@ -791,8 +867,16 @@ function layoutPace(clusters: Cluster[], canvas: Rect): Parts {
       }),
       core: rectPolygon(rect),
       labelX: left + w / 2,
-      labelY: canvas.y0 + 20,
+      /* Above the ground, not on it. Placement leaves the top of the lane
+         clear, but separation does not know about captions: a crowded lane
+         cannot hold every dot at the height its ratio asks for, and what it
+         does with the overflow is push upward. Clamping cannot help either --
+         there is genuinely no arrangement that fits -- so the caption gets out
+         of the way instead, and the view anchors high enough to show it. */
+      labelY: canvas.y0 - 20,
       align: "middle",
+      shape: "rect",
+      path: "",
       fill: lane.fill,
       fillOpacity: lane.wash,
     });
@@ -813,8 +897,11 @@ function layoutPace(clusters: Cluster[], canvas: Rect): Parts {
 
     const width = rect.x1 - rect.x0;
     const step = 2 * RADIUS.goal + NODE_GAP + 8;
-    const top = rect.y0 + 34;
-    const height = rect.y1 - rect.y0 - 44;
+    /* The lanes do not have to fit the window -- the view opens at the top of
+       the ground and scrolls down -- so the room above the first row costs
+       nothing and keeps the leaders clear of the caption above them. */
+    const top = rect.y0 + 46;
+    const height = rect.y1 - rect.y0 - 56;
 
     /* Height is the ratio, so a run of identical ratios wants one line -- and
        an exact tie is common, since a whole goal's trackables can share a
@@ -917,11 +1004,35 @@ export function layoutGraph(clusters: Cluster[], mode: ViewMode): Layout {
 
   relax(parts.nodes, parts.regions, canvas);
 
-  // Regions tile the canvas in every mode, so the fit is the canvas -- which
-  // also means switching views never re-scales the picture under you.
-  return {
-    ...parts,
-    extentX: (canvas.x1 - canvas.x0) / 2 + 12,
-    extentY: (canvas.y1 - canvas.y0) / 2 + 12,
-  };
+  /* Cells are smoothed together rather than one at a time: the curve through a
+     junction belongs to the boundary, not to either side of it. Bands and lanes
+     are thresholds and stay straight. */
+  const cells = parts.regions.filter((r) => r.shape === "cell");
+  const curved = smoothTiling(cells.map((r) => r.points), CELL_CORNER);
+  cells.forEach((r, i) => (r.path = curved[i]));
+  parts.regions
+    .filter((r) => r.shape === "rect")
+    .forEach((r) => {
+      r.path = `M ${r.points.map(([x, y]) => `${x} ${y}`).join(" L ")} Z`;
+    });
+
+  /* Regions tile the canvas, so the canvas is the fit -- except when the dots
+     do not all fit inside it. Separation runs under a region constraint it
+     cannot always satisfy (a lane only holds so many dots at this pitch), and
+     what it gives up is the canvas edge. Ignoring that would leave those dots
+     unreachable, because the fitted axis is clamped to these extents and
+     nothing past them can be scrolled to. */
+  let halfX = (canvas.x1 - canvas.x0) / 2;
+  let halfY = (canvas.y1 - canvas.y0) / 2;
+  for (const p of parts.nodes) {
+    /* A goal carries its title at rest, and the title is far wider than the dot
+       under it -- so the extent has to cover the words, not the mark, or the
+       fitted view slices the names off the outermost goals. Deeper labels
+       appear only on hover and are not owed room. */
+    const reach = p.depth === 1 ? GOAL_LABEL_REACH : p.radius + 24;
+    halfX = Math.max(halfX, Math.abs(p.x) + reach);
+    halfY = Math.max(halfY, Math.abs(p.y) + p.radius + 24);
+  }
+
+  return { ...parts, canvas, extentX: halfX + 12, extentY: halfY + 12 };
 }
