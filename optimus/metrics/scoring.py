@@ -85,6 +85,28 @@ def score_item(inputs: ScoreInputs, config: MetricsConfig) -> ScoredItem:
         ScoreComponent("neglect", inputs.days_since_last_session, neglect, p.w_neglect)
     )
 
+    # --- density: work whose unit understates its cost -----------------------
+    # A trackable measured in pages, some of which hold hour-long problems, is
+    # ranked on a counter that does not reflect what it takes. Without this term
+    # it loses every week to work that is merely easier to count.
+    #
+    # An absent index contributes 0, not a neutral 0.5 -- the same restraint
+    # feasibility_pressure shows above. No evidence that a unit understates the
+    # work is not evidence that it does.
+    if inputs.productivity_index is None:
+        density = 0.0
+    else:
+        # The saturation point lives beside its siblings in [productivity]
+        # rather than in [planning]: it is a fact about the density scale, and
+        # splitting it from normal_index_low/high would let the two drift.
+        density = _clamp(
+            (inputs.productivity_index - 1.0)
+            / max(config.productivity.density_reference, 1e-9)
+        )
+    components.append(
+        ScoreComponent("density_underestimate", inputs.productivity_index, density, p.w_density)
+    )
+
     # --- effort penalty: SUBTRACTED, so its weight is carried negative -------
     # Keeping the sign in the weight means sum(contributions) == score exactly,
     # which makes the stored breakdown self-checking.

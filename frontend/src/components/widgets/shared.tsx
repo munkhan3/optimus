@@ -47,7 +47,7 @@ export function BarRow({
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate text-body-sm text-ink">{label}</span>
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">{value}</span>
+        <span className="shrink-0 font-mono text-footnote tabular-nums text-muted">{value}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-abyss">
         {fraction !== null && (
@@ -57,7 +57,7 @@ export function BarRow({
           />
         )}
       </div>
-      {hint && <div className="text-[11px] text-faint">{hint}</div>}
+      {hint && <div className="text-footnote text-faint">{hint}</div>}
     </div>
   );
 }

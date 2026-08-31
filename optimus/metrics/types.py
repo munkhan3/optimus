@@ -60,6 +60,16 @@ class SessionObs:
     interrupted: bool = False           # excluded from pace, retained (§23.6)
     entered_retroactively: bool = False  # D13: down-weighted in calibration only
     intent_met: bool | None = None       # exploratory sessions, instead of a count
+    # §36.1 reversed: sessions may be any length, so duration is now part of the
+    # observation rather than a constant. `actual_minutes` is what the clock
+    # measured; `planned_minutes` is what was intended, and is what pace falls
+    # back to when the measurement is missing or not credible.
+    actual_minutes: float | None = None
+    planned_minutes: float | None = None
+    # The second axis. None means the count was not recorded, which is NOT the
+    # same as having done none -- the density fit skips such rows rather than
+    # reading them as zeros, which would drag the fitted cost of a problem to 0.
+    secondary_output: float | None = None
 
     @property
     def counts_toward_pace(self) -> bool:
@@ -112,6 +122,46 @@ class ProgressCheck:
 
 
 @dataclass(frozen=True)
+class Calculation:
+    """How a displayed number was arrived at, as data rather than as prose.
+
+    P3 requires every recommendation to decompose, and `score_breakdown` already
+    does this for ranking. Returning the same shape for the pace scores means the
+    UI renders a "how this is calculated" disclosure from the engine's own terms
+    instead of restating the formula in React, where it would silently drift out
+    of agreement with the code that produced the number.
+    """
+
+    formula: str
+    terms: tuple[tuple[str, float | None], ...]
+    result: float | None
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class PaceScores:
+    """Two dimensionless readings of pace. Never collapsed into one.
+
+    `pace` answers "how fast do I work on this?" -- this trackable's rate against
+    the rate the same user achieves on this task_type generally. `track` answers
+    "how far off-pace am I?" -- pace against what the commitment requires.
+
+    They are deliberately separate. D6 removed pace deficit from ranking because
+    a goal at 0.7 pace may simply have had an aggressive plan; a single blended
+    number would reintroduce exactly that confusion, reporting slow work when the
+    real finding is an optimistic plan. Both are presentation over numbers §24.2
+    and §24.3 already compute, and NEITHER feeds §25.1 ranking.
+
+    Either may be None. A score with no honest denominator is absent, not 1.0.
+    """
+
+    pace: float | None
+    track: float | None
+    pace_calculation: Calculation
+    track_calculation: Calculation
+
+
+@dataclass(frozen=True)
 class Interval:
     """A displayed uncertainty band. D8: displayed, not propagated.
 
@@ -138,6 +188,11 @@ class PaceEstimate:
     n_sessions: int = 0          # non-interrupted observations behind this
     observed_mean: float | None = None
     prior_pace: float | None = None
+    # The same estimate divided by the standard session length. `point` stays
+    # per-standard-session so every existing consumer keeps its meaning; this is
+    # the rate the details panel shows and the only figure that is honest to
+    # compare across sessions of different lengths.
+    point_per_minute: float | None = None
 
     @property
     def is_usable(self) -> bool:
@@ -244,6 +299,79 @@ class Health:
 
 
 @dataclass(frozen=True)
+class DensityFit:
+    """What a unit of each axis costs in minutes, fit from one trackable's history.
+
+    Sessions have a duration and two counts, so the minutes spent are a linear
+    combination of them: `minutes ~= alpha*primary + beta*secondary`. Fitting
+    that recovers what a page and a problem each actually cost, which is the
+    thing nobody can state up front and every plan silently assumes.
+
+    Fit PER TRACKABLE, never pooled. A problem in one book is not a problem in
+    another, so pooling would average away the only quantity of interest. This
+    is what lets the resulting index be compared across books while the raw
+    counts remain incomparable.
+
+    `basis` is UNAVAILABLE whenever the data cannot support the model, and
+    `reason` says which guard fired. There is no partial credit here: a fit the
+    data does not support is not a weaker number, it is a wrong one.
+    """
+
+    alpha: float | None          # minutes per primary unit
+    beta: float | None           # minutes per secondary unit
+    k: float | None              # beta / alpha -- primary units displaced by one secondary
+    r_squared: float | None
+    n_sessions: int
+    basis: Basis
+    reason: str = ""
+
+    @property
+    def is_usable(self) -> bool:
+        return self.basis is not Basis.UNAVAILABLE and self.k is not None
+
+
+@dataclass(frozen=True)
+class SessionProductivity:
+    """How much work one session contained, as opposed to how much progress it made.
+
+    `productivity_index` is dimensionless: this session's effective output over
+    what a typical session on this trackable produces. 1.0 is normal. Being
+    dimensionless is what makes it comparable across incommensurable work (§11).
+
+    `density_factor` is how much denser this session was than usual -- the
+    signal that explains an alarming-looking page count.
+
+    `progress_outlier` and `explained_by_density` are the pair that matters. An
+    outlier whose index is normal was DENSE, not slow, and treating those two as
+    the same thing is the misreading this whole axis exists to prevent.
+    """
+
+    effective_output: float | None
+    productivity_index: float | None
+    density_factor: float | None
+    progress_outlier: bool
+    explained_by_density: bool
+    fit: DensityFit
+    calculation: Calculation
+
+
+@dataclass(frozen=True)
+class SeriesStability:
+    """Relative spread of each axis, for deciding whether the unit is the wrong one.
+
+    Compares IQR/median between the two series over the same sessions. A unit
+    whose observations scatter far less is measuring the work more faithfully,
+    and that comparison -- not a model's opinion -- is what may propose a switch.
+    """
+
+    primary_relative_iqr: float | None
+    secondary_relative_iqr: float | None
+    n_sessions: int
+    secondary_is_tighter: bool
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class StallReport:
     """§24.9. Produces a review prompt, not a score change.
 
@@ -310,6 +438,11 @@ class RebaselineProposal:
     trigger: str                       # 'drift' | 'stall' | 'catch_up_cap' | ''
     gate_passed: bool                  # §25.4: n >= 5, or drift beyond interval
     gate_reason: str = ""
+    # True when a drift prompt was suppressed because the primary unit is
+    # understating the work. `trigger` is retained so the weekly review lists it
+    # as DEFERRED -- §17's concern is drift that goes unseen, not drift that is
+    # seen and explained.
+    held_by_density: bool = False
     options: tuple[str, ...] = field(
         default_factory=lambda: (
             "add_sessions",
@@ -337,6 +470,10 @@ class ScoreInputs:
     unblocks_something: bool = False
     days_since_last_session: int | None = None
     est_minutes: int | None = None
+    # Recent median productivity index (§ productivity). Above 1.0 means the
+    # primary unit understates what this work costs. None where no fit stands up,
+    # which contributes nothing rather than a neutral guess.
+    productivity_index: float | None = None
     label: str = ""
 
 

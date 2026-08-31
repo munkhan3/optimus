@@ -59,14 +59,38 @@ def _obj(props: dict[str, types.Schema], required: list[str]) -> types.Schema:
 TOOL_DECLARATIONS: list[types.FunctionDeclaration] = [
     types.FunctionDeclaration(
         name="get_goal_state",
-        description="The goal hierarchy with current metrics. Omit goal_id for all goals.",
-        parameters=_obj({"goal_id": _int("A specific goal, or omit for all", optional=True)}, []),
+        description=(
+            "The goal tree. For EVERY trackable this already includes feasibility, "
+            "health, pace, required_pace, drift, projection and "
+            "days_since_last_session -- the same numbers get_feasibility and "
+            "get_pace return. Omit goal_id for all goals.\n"
+            "This is the right FIRST call for any question spanning more than one "
+            "goal: one call here answers what would otherwise take a get_feasibility "
+            "and a get_pace per goal. Having called it, do NOT call get_feasibility "
+            "or get_pace for a trackable it returned -- you already hold those "
+            "numbers, and fetching them again only makes the user wait."
+        ),
+        parameters=_obj(
+            {
+                "goal_id": _int("A specific goal, or omit for all", optional=True),
+                "include_finished": _int(
+                    "1 to include goals whose status is 'done'. Omitted, only "
+                    "live goals are returned, which is what almost every "
+                    "question is about.",
+                    optional=True,
+                ),
+            },
+            [],
+        ),
     ),
     types.FunctionDeclaration(
         name="get_pace",
         description=(
             "pace_hat, its displayed interval, required pace, drift, and the "
-            "projected completion range for one trackable."
+            "projected completion range for ONE trackable.\n"
+            "A drill-down, not a primary source: get_goal_state already returns "
+            "every one of these fields for every trackable it covers. Use this only "
+            "for a trackable you have not already fetched."
         ),
         parameters=_obj({"trackable_id": _int()}, ["trackable_id"]),
     ),
@@ -74,7 +98,10 @@ TOOL_DECLARATIONS: list[types.FunctionDeclaration] = [
         name="get_feasibility",
         description=(
             "Feasibility margin, sessions available before the deadline, and the "
-            "infeasible flag for every trackable under a goal."
+            "infeasible flag for every trackable under ONE goal.\n"
+            "A drill-down, not a primary source: get_goal_state already returns "
+            "feasibility and health for every trackable it covers. Use this only "
+            "for a goal you have not already fetched."
         ),
         parameters=_obj({"goal_id": _int()}, ["goal_id"]),
     ),
@@ -146,8 +173,25 @@ def dispatch(db: Session, name: str, args: dict[str, Any]) -> Any:
 
 
 def _get_goal_state(db: Session, args: dict) -> Any:
+    """The tree, scoped to live work unless asked otherwise.
+
+    Scoping is by goal status rather than by trimming fields. Trimming was
+    measured and is not worth it: of 1,527 chars per trackable, only
+    `calibration` (178) is both large and rarely load-bearing, so the most that
+    can safely be cut is ~14% -- and it costs provenance the assistant is
+    required to report (D3/P2).
+
+    What actually grows is the NUMBER of goals, and the share of them that are
+    finished only rises. A user two years in has mostly done work, and "which
+    goal is at risk" never means a goal that shipped last spring. Excluding
+    those by default keeps this result proportional to live work rather than to
+    account age, and costs nothing today.
+    """
     goal_id = args.get("goal_id")
+    include_finished = bool(args.get("include_finished"))
     stmt = select(Goal) if goal_id is None else select(Goal).where(Goal.id == goal_id)
+    if goal_id is None and not include_finished:
+        stmt = stmt.where(Goal.status != "done")
     today = _today()
     out = []
     for goal in db.exec(stmt).all():

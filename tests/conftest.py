@@ -48,6 +48,8 @@ def session_factory():
         interrupted: bool = False,
         retroactive: bool = False,
         intent_met: bool | None = None,
+        minutes: float | None = None,
+        planned: float | None = None,
     ) -> SessionObs:
         return SessionObs(
             task_type=task_type,
@@ -57,6 +59,8 @@ def session_factory():
             interrupted=interrupted,
             entered_retroactively=retroactive,
             intent_met=intent_met,
+            actual_minutes=minutes,
+            planned_minutes=planned,
         )
 
     return make

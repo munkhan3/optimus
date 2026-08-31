@@ -40,12 +40,12 @@ export function SelfAssessedSeries({ data }: WidgetProps) {
                 <div key={m.milestone_id} className="space-y-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-body-sm text-ink">{m.title}</span>
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                    <span className="shrink-0 font-mono text-footnote tabular-nums text-muted">
                       {m.stall.latest_pct === null ? "—" : `${Math.round(m.stall.latest_pct)}%`}
                     </span>
                   </div>
                   <Spark series={m.stall.series} stalled={m.stall.stalled} />
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-footnote text-faint">
                     <span>{goal.title}</span>
                     {m.stall.stalled && (
                       <Tag tone="warn">
@@ -56,7 +56,7 @@ export function SelfAssessedSeries({ data }: WidgetProps) {
                 </div>
               ))}
             </Rows>
-            <div className="border-t border-line pt-2 text-[11px] text-faint">
+            <div className="border-t border-line pt-2 text-footnote text-faint">
               Not an input to any score. Pace, feasibility and health ignore it entirely.
             </div>
           </div>
@@ -70,7 +70,7 @@ function Spark({ series, stalled }: { series: number[]; stalled: boolean }) {
   const W = 200;
   const H = 26;
   if (series.length < 2) {
-    return <div className="h-[26px] text-[11px] text-faint">One Reading So Far</div>;
+    return <div className="h-[26px] text-footnote text-faint">One Reading So Far</div>;
   }
   const points = series
     .map((v, i) => `${(i / (series.length - 1)) * W},${H - (Math.max(0, Math.min(v, 100)) / 100) * H}`)

@@ -22,6 +22,7 @@ from sqlmodel import Session, select
 from optimus.metrics.config import MetricsConfig
 from optimus.metrics.feasibility import feasibility, feasibility_from_session_budget
 from optimus.metrics.pace import empirical_pace
+from optimus.metrics.productivity import density_fit, session_productivity
 from optimus.metrics.progress import remaining_units
 from optimus.metrics.redistribute import assign_tier, redistribute
 from optimus.metrics.scoring import rank
@@ -96,6 +97,7 @@ def candidates(db: Session, today: date, config: MetricsConfig) -> list[ScoreInp
                     db, trackable.id or 0, today
                 ),
                 est_minutes=(est.est_minutes if est else config.session.minutes),
+                productivity_index=_recent_density(db, trackable, config),
                 label=trackable.title,
             )
         )
@@ -128,6 +130,31 @@ def candidates(db: Session, today: date, config: MetricsConfig) -> list[ScoreInp
         )
 
     return out
+
+
+def _recent_density(
+    db: Session, trackable: Trackable, config: MetricsConfig
+) -> float | None:
+    """This trackable's recent productivity index, or None.
+
+    Ranks work by what it costs rather than by what it counts: a trackable whose
+    pages hold hour-long problems otherwise loses every week to work that is
+    merely easier to count.
+
+    None wherever the fit does not stand up, which §25.1 contributes as zero
+    rather than as a neutral middle -- no evidence that a unit understates the
+    work is not evidence that it does.
+
+    A counter-less milestone never reaches here, so it is scored on identical
+    terms with this term simply absent, which is what AC6 requires.
+    """
+    sessions = loader.trackable_sessions(db, trackable.id or 0)
+    if not sessions:
+        return None
+    fit = density_fit(sessions, config)
+    if not fit.is_usable:
+        return None
+    return session_productivity(sessions[-1], sessions, fit, config).productivity_index
 
 
 def weekly_ranking(db: Session, today: date, config: MetricsConfig) -> list[ScoredItem]:

@@ -1009,8 +1009,16 @@ refuses to pretend an impossible plan is fine.
 
 ## 36. Open questions
 
-1. **Session length.** Fixed 25 minutes, or per-task-type? Fixed keeps pace pooling clean;
-   variable is more realistic for reading vs. problem sets.
+1. **Session length.** ~~Fixed 25 minutes, or per-task-type?~~ **Resolved, then reversed:
+   user-set.** Fixed length was chosen because it keeps pace pooling clean -- pace is
+   units-per-session and needs no normalization. In use that cleanliness was paid for by the
+   user, who had to split an hour of reading into consecutive rows so the system could keep
+   its arithmetic simple. The timer is now set per session; 25 minutes remains the default
+   and becomes the normalization constant, and §24.3 divides each observation by its own
+   duration before it enters the sample. Pace stays denominated per _standard_ session,
+   because §24.6 measures availability in budgeted sessions declared under §11 and the two
+   have to be in the same currency. Sessions whose measured duration is not credible fall
+   back to their planned length rather than being discarded (§23.5).
 2. **Budget setting.** Weekly budgets are user-declared, which reintroduces some of the
    manual prioritization the product exists to remove. Acceptable for v0; §32 is the real
    answer.

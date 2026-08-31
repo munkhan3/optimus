@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 from fastapi import Request
 from sqlalchemy import Engine, event
@@ -70,12 +71,19 @@ def get_engine() -> Engine:
     return _engine
 
 
-def get_session(request: Request) -> Iterator[Session]:
+@contextmanager
+def open_session(user_id: int | None) -> Iterator[Session]:
+    """A session carrying an RLS identity, not tied to a request's lifetime.
+
+    The streaming assistant needs this. A dependency-provided session is closed
+    when the route function returns, which for a StreamingResponse is *before*
+    the generator has produced its body -- so the loop would be reading from a
+    session that had already gone away.
+    """
     with Session(get_engine()) as session:
         # PostgreSQL RLS policies use this transaction-local setting. Auth sets
         # it before a route opens its data session; public account endpoints
         # run without it and only touch the auth tables.
-        user_id = getattr(request.state, "user_id", None)
         if user_id is not None:
             session.info["user_id"] = user_id
             # Open the initial transaction with its RLS setting in place. The
@@ -85,10 +93,20 @@ def get_session(request: Request) -> Iterator[Session]:
         yield session
 
 
+def get_session(request: Request) -> Iterator[Session]:
+    with open_session(getattr(request.state, "user_id", None)) as session:
+        yield session
+
+
 # The authoritative value of trackable.completed_units is SUM(actual_output)
-# over its sessions (§21). Keeping the cache correct in application code means
-# every future write path must remember to; a trigger means none of them can
-# forget. AC7 asserts the invariant, and this is what makes it unfalsifiable.
+# over its sessions (§21), and secondary_completed_units is SUM(secondary_output)
+# on the same terms. Keeping the caches correct in application code means every
+# future write path must remember to; a trigger means none of them can forget.
+# AC7 asserts the invariant, and this is what makes it unfalsifiable.
+#
+# ONE function maintains both. Two triggers would be two things to keep in step,
+# and the second would eventually be forgotten in exactly the branch that matters
+# -- the one below, where a session moves between trackables.
 COMPLETED_UNITS_TRIGGER = """
 CREATE OR REPLACE FUNCTION refresh_completed_units() RETURNS TRIGGER AS $$
 DECLARE
@@ -101,7 +119,12 @@ BEGIN
                    (SELECT SUM(actual_output)
                       FROM work_session
                      WHERE trackable_id = affected
-                       AND actual_output IS NOT NULL), 0)
+                       AND actual_output IS NOT NULL), 0),
+               secondary_completed_units = COALESCE(
+                   (SELECT SUM(secondary_output)
+                      FROM work_session
+                     WHERE trackable_id = affected
+                       AND secondary_output IS NOT NULL), 0)
          WHERE id = affected;
     END IF;
 
@@ -114,7 +137,12 @@ BEGIN
                    (SELECT SUM(actual_output)
                       FROM work_session
                      WHERE trackable_id = OLD.trackable_id
-                       AND actual_output IS NOT NULL), 0)
+                       AND actual_output IS NOT NULL), 0),
+               secondary_completed_units = COALESCE(
+                   (SELECT SUM(secondary_output)
+                      FROM work_session
+                     WHERE trackable_id = OLD.trackable_id
+                       AND secondary_output IS NOT NULL), 0)
          WHERE id = OLD.trackable_id;
     END IF;
 

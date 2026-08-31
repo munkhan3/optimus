@@ -20,11 +20,21 @@ than an artifact of estimate uncertainty.
 from __future__ import annotations
 
 from .config import MetricsConfig
-from .types import Drift, PaceEstimate, RebaselineProposal, StallReport
+from .types import (
+    Drift,
+    PaceEstimate,
+    RebaselineProposal,
+    SessionProductivity,
+    StallReport,
+)
 
 # §17. Order is meaningful and moving the deadline is never first. Silent
 # deadline extension is how a goal drifts for months without formally failing,
 # and preventing that is a core purpose of the system.
+#
+# STAYS AT FOUR. The `change_metric` resolution the baseline table also accepts
+# is not a fifth way to absorb slip and must never be offered here -- see the
+# migration b7e2a4c93f18 docstring.
 FOUR_OPTIONS = ("add_sessions", "cut_scope", "move_deadline", "declare_infeasible")
 
 
@@ -43,8 +53,23 @@ def evaluate_metered(
     pace: PaceEstimate,
     dr: Drift,
     config: MetricsConfig,
+    productivity: SessionProductivity | None = None,
 ) -> RebaselineProposal:
-    """Should metered work prompt a rebaseline? (§25.2 first trigger)"""
+    """Should metered work prompt a rebaseline? (§25.2 first trigger)
+
+    `productivity` may hold the prompt back. Drift is measured in the primary
+    unit, and where that unit understates the work -- pages that happen to hold
+    problems -- the drift is an artifact of the counter rather than evidence of
+    slowness. Prompting there teaches the user the prompts are worthless, which
+    is the same failure the §25.4 gate exists to prevent, arriving by a
+    different route.
+
+    Two bounds keep this from becoming the silent drift §17 exists to prevent.
+    Suppression stops entirely once drift passes `suppression_max_drift_sessions`
+    -- past that the work is behind regardless of why. And a held prompt is still
+    reported: `should_prompt` is False but `trigger` retains "drift", so the
+    weekly review can list it as deferred rather than losing it.
+    """
     if dr.sessions is None:
         return RebaselineProposal(
             should_prompt=False,
@@ -82,12 +107,44 @@ def evaluate_metered(
             "-- a bad week at this sample size is noise, not signal."
         )
 
+    would_prompt = material and gate_passed
+    held = _held_by_density(would_prompt, dr, productivity, config)
+    if held:
+        reason = held
+
     return RebaselineProposal(
-        should_prompt=material and gate_passed,
-        trigger="drift" if material and gate_passed else "",
+        should_prompt=would_prompt and not held,
+        # Retained when held, so the weekly review can surface a DEFERRED prompt
+        # rather than one that silently vanished.
+        trigger="drift" if would_prompt else "",
         gate_passed=gate_passed,
         gate_reason=reason,
         options=FOUR_OPTIONS,
+        held_by_density=bool(held),
+    )
+
+
+def _held_by_density(
+    would_prompt: bool,
+    dr: Drift,
+    productivity: SessionProductivity | None,
+    config: MetricsConfig,
+) -> str:
+    """The reason a prompt is being held, or "" if it is not."""
+    if not would_prompt or productivity is None:
+        return ""
+    if not productivity.fit.is_usable or productivity.productivity_index is None:
+        return ""
+    cfg = config.productivity
+    if productivity.productivity_index < cfg.normal_index_low:
+        return ""  # the sessions really were below par; nothing to explain it away
+    if dr.sessions is not None and dr.sessions > cfg.suppression_max_drift_sessions:
+        # Far enough behind that the cause stops mattering.
+        return ""
+    return (
+        f"Held: drift is measured in the primary unit, but recent sessions ran at "
+        f"{productivity.productivity_index:.2f}x the work your history predicts. "
+        "The counter is understating the work, not the work falling behind."
     )
 
 

@@ -122,6 +122,16 @@ def throughput(
     )
 
 
+@router.get("/flow")
+def flow(
+    tz: str = "UTC",
+    weeks: int = Query(default=12, ge=1, le=dashboard_service.MAX_WEEKS),
+    db: Session = Depends(get_session),
+) -> dict:
+    """Time worked past the planned end of a session -- which work pulls you in."""
+    return dashboard_service.flow(db, today=_today(), tz=_tz(tz), weeks=weeks)
+
+
 @router.get("/portfolio")
 def portfolio(db: Session = Depends(get_session)) -> dict:
     return dashboard_service.portfolio(db, today=_today())

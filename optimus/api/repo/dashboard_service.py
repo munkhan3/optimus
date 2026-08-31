@@ -417,6 +417,126 @@ def _capacity_series(db: Session, start: date, end: date) -> list[dict[str, Any]
     return series
 
 
+# ------------------------------------------------------------------ flow state
+
+
+def flow(db: Session, *, today: date, tz: str, weeks: int) -> dict[str, Any]:
+    """Time worked past the planned end of a session, by week and by goal.
+
+    A session that runs out and gets ignored is the one thing in the log the
+    user did not plan, schedule or commit to -- they simply did not want to
+    stop. That makes it the closest measure the system has of which work is
+    actually rewarding, as opposed to which work is on the list.
+
+    Two figures, because minutes alone mislead. A goal with forty sessions and
+    one long overrun is not the same as a goal with four sessions that all ran
+    over, and the totals cannot tell them apart -- so `flow_rate`, the share of
+    sessions that crossed at all, is reported beside the minutes.
+
+    NULL flow_minutes means "ended before this was recorded", which is unknown
+    and not zero. Those sessions are excluded from BOTH sides of the rate, so a
+    long history of pre-existing rows cannot drag it towards zero and invent a
+    finding about work the user has not done yet.
+    """
+    weeks = max(1, min(weeks, MAX_WEEKS))
+    start = loader.week_start(today) - timedelta(weeks=weeks - 1)
+
+    day = _local_day(tz).label("day")
+    rows = db.exec(
+        select(
+            day,
+            WorkSession.trackable_id,
+            WorkSession.milestone_id,
+            cast(WorkSession.flow_minutes, Float),
+        )
+        .where(day >= start)
+        .where(day <= today)
+        .where(WorkSession.flow_minutes.is_not(None))
+    ).all()
+
+    by_week: dict[date, dict[str, float]] = defaultdict(
+        lambda: {"flow_minutes": 0.0, "sessions": 0, "sessions_in_flow": 0}
+    )
+    by_goal: dict[int, dict[str, float]] = defaultdict(
+        lambda: {"flow_minutes": 0.0, "sessions": 0, "sessions_in_flow": 0}
+    )
+
+    for d, trackable_id, milestone_id, minutes in rows:
+        minutes = float(minutes or 0.0)
+        crossed = 1 if minutes > 0 else 0
+
+        bucket = by_week[loader.week_start(d)]
+        bucket["flow_minutes"] += minutes
+        bucket["sessions"] += 1
+        bucket["sessions_in_flow"] += crossed
+
+        # Same walk up to the owning goal that the time portfolio uses: a
+        # session hangs off a trackable or a milestone, never off a goal.
+        milestone = None
+        if trackable_id is not None:
+            trackable = db.get(Trackable, trackable_id)
+            milestone = db.get(Milestone, trackable.milestone_id) if trackable else None
+        elif milestone_id is not None:
+            milestone = db.get(Milestone, milestone_id)
+        if milestone is None:
+            continue
+        goal = by_goal[milestone.goal_id]
+        goal["flow_minutes"] += minutes
+        goal["sessions"] += 1
+        goal["sessions_in_flow"] += crossed
+
+    def rate(bucket: dict[str, float]) -> float | None:
+        n = int(bucket["sessions"])
+        return round(int(bucket["sessions_in_flow"]) / n, 4) if n else None
+
+    series = []
+    cursor = start
+    while cursor <= today:
+        bucket = by_week.get(cursor)
+        series.append(
+            {
+                "week_start": cursor.isoformat(),
+                "flow_minutes": round(bucket["flow_minutes"], 2) if bucket else 0.0,
+                "sessions": int(bucket["sessions"]) if bucket else 0,
+                "sessions_in_flow": int(bucket["sessions_in_flow"]) if bucket else 0,
+            }
+        )
+        cursor += timedelta(days=7)
+
+    goals = [
+        {
+            "goal_id": gid,
+            "title": (g.title if (g := db.get(Goal, gid)) else None),
+            "area_id": g.area_id if g else None,
+            "flow_minutes": round(bucket["flow_minutes"], 2),
+            "sessions": int(bucket["sessions"]),
+            "sessions_in_flow": int(bucket["sessions_in_flow"]),
+            "flow_rate": rate(bucket),
+        }
+        for gid, bucket in by_goal.items()
+    ]
+    # Most flow first: the question is which work pulls you in, so the answer
+    # belongs at the top rather than in goal-id order.
+    goals.sort(key=lambda row: (-row["flow_minutes"], row["goal_id"]))
+
+    totals = {
+        "flow_minutes": round(sum(b["flow_minutes"] for b in by_week.values()), 2),
+        "sessions": sum(int(b["sessions"]) for b in by_week.values()),
+        "sessions_in_flow": sum(int(b["sessions_in_flow"]) for b in by_week.values()),
+    }
+    return {
+        "from": start.isoformat(),
+        "to": today.isoformat(),
+        "tz": tz,
+        "weeks": series,
+        "goals": goals,
+        "total_flow_minutes": totals["flow_minutes"],
+        "sessions": totals["sessions"],
+        "sessions_in_flow": totals["sessions_in_flow"],
+        "flow_rate": rate(totals),
+    }
+
+
 # ------------------------------------------------------------------- portfolio
 
 

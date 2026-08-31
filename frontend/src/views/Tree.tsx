@@ -3,6 +3,7 @@ import { ViewHint } from "../components/ViewChrome";
 import { api, ApiError } from "../lib/api";
 import { GoalGraph } from "../components/GoalGraph";
 import { Banner, Button, Empty, SectionLabel, Skeleton, Stat, Tag } from "../components/Primitives";
+import { SessionDuration, useSessionDefaults } from "../components/SessionDuration";
 import { type Cluster, type Focus, type GraphNode, RATIO_CEILING } from "../lib/graphLayout";
 import { type Area, areaColors, UNASSIGNED_COLOR } from "../lib/areas";
 import type { TrackableView } from "../lib/types";
@@ -180,6 +181,9 @@ function buildClusters(
 }
 
 export function Tree({ onStarted, sessionOpen }: { onStarted: () => void; sessionOpen: boolean }) {
+  // §36.1 reversed: the session length is the user's to set.
+  const { minutes: defaultMinutes } = useSessionDefaults();
+  const [minutes, setMinutes] = useState(defaultMinutes);
   const [tree, setTree] = useState<ApiTree | null>(null);
   const [metrics, setMetrics] = useState<TrackableView[]>([]);
   const [week, setWeek] = useState<WeekCommitment[]>([]);
@@ -262,13 +266,13 @@ export function Tree({ onStarted, sessionOpen }: { onStarted: () => void; sessio
               <SectionLabel>{selected.kind}</SectionLabel>
               <div className="display mt-1.5 text-subheading">{selected.title}</div>
               {selected.subtitle && (
-                <div className="mt-1 text-[13px] leading-relaxed text-muted">{selected.subtitle}</div>
+                <div className="mt-1 text-caption leading-relaxed text-muted">{selected.subtitle}</div>
               )}
             </div>
             <button
               onClick={() => setSelected(null)}
               aria-label="Close details"
-              className="shrink-0 rounded-control px-2 py-1 text-[13px] text-faint transition hover:text-ink"
+              className="shrink-0 rounded-control px-2 py-1 text-caption text-faint transition hover:text-ink"
             >
               Close
             </button>
@@ -307,10 +311,21 @@ export function Tree({ onStarted, sessionOpen }: { onStarted: () => void; sessio
                   hint={`${num(metric.progress.completed_units, 0)} of ${num(metric.progress.total_units, 0)} ${metric.unit}`}
                 />
               </div>
+              {/* §36.1 reversed. Prefilled, so Start stays one tap (§23.1). */}
+              <div className="mt-4">
+                <SessionDuration
+                  value={minutes}
+                  onChange={setMinutes}
+                  disabled={sessionOpen}
+                />
+              </div>
               <Button
-                className="mt-5 w-full"
+                className="mt-3 w-full"
                 onClick={async () => {
-                  await api.post("/api/sessions/start", { trackable_id: metric.trackable_id });
+                  await api.post("/api/sessions/start", {
+                    trackable_id: metric.trackable_id,
+                    planned_minutes: minutes,
+                  });
                   onStarted();
                 }}
                 disabled={sessionOpen}

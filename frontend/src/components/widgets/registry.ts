@@ -7,10 +7,12 @@ import { OutputPerSession } from "./OutputPerSession";
 import { CapacityVsActual } from "./CapacityVsActual";
 import { TimePortfolio } from "./TimePortfolio";
 import { CalibrationWidget } from "./CalibrationWidget";
+import { WorkDensity } from "./WorkDensity";
 import { DeadlineHorizon } from "./DeadlineHorizon";
 import { SelfAssessedSeries } from "./SelfAssessedSeries";
 import { RebaselineHistory } from "./RebaselineHistory";
 import { RoadmapCompact } from "./RoadmapCompact";
+import { FlowState } from "./FlowState";
 import type { Source, WidgetSpec } from "./types";
 
 /**
@@ -97,6 +99,16 @@ export const WIDGETS: WidgetSpec[] = [
     Component: CalibrationWidget,
   },
   {
+    // `kind` is the persisted identifier for a placed widget and must never be
+    // renamed -- a layout referencing it would silently lose the widget.
+    kind: "work_density",
+    title: "Work Density",
+    blurb: "What this work costs, against what its counter says.",
+    defaultW: 4, defaultH: 4, minW: 3, minH: 3,
+    sources: ["portfolio"],
+    Component: WorkDensity,
+  },
+  {
     kind: "deadline_horizon",
     title: "Deadline Horizon",
     blurb: "What is due next, and whether it still fits before then.",
@@ -119,6 +131,14 @@ export const WIDGETS: WidgetSpec[] = [
     defaultW: 6, defaultH: 4, minW: 4, minH: 3,
     sources: ["roadmap"],
     Component: RebaselineHistory,
+  },
+  {
+    kind: "time_in_flow",
+    title: "Time In Flow State",
+    blurb: "Work you did not stop doing when the timer said you could.",
+    defaultW: 4, defaultH: 4, minW: 3, minH: 3,
+    sources: ["flow"],
+    Component: FlowState,
   },
   {
     kind: "roadmap_compact",

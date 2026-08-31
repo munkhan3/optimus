@@ -19,8 +19,8 @@ swift MakeIcon.swift build/Optimus.iconset >/dev/null
 iconutil -c icns build/Optimus.iconset -o "$OUT/Contents/Resources/Optimus.icns"
 
 echo "› compile"
-swiftc -O Optimus.swift -o "$OUT/Contents/MacOS/Optimus" \
-  -framework Cocoa -framework WebKit
+swiftc -O main.swift Optimus.swift SessionHUD.swift -o "$OUT/Contents/MacOS/Optimus" \
+  -framework Cocoa -framework WebKit -framework UserNotifications
 
 echo "› bundle"
 cat > "$OUT/Contents/Info.plist" <<PLIST

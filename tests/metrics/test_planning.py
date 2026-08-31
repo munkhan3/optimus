@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from optimus.metrics.drift import drift
 from optimus.metrics.pace import empirical_pace
 from optimus.metrics.rebaseline import (
@@ -11,7 +13,15 @@ from optimus.metrics.rebaseline import (
 )
 from optimus.metrics.redistribute import assign_tier, redistribute
 from optimus.metrics.scoring import rank, score_item
-from optimus.metrics.types import ScoredItem, ScoreInputs, StallReport
+from optimus.metrics.types import (
+    Basis,
+    Calculation,
+    DensityFit,
+    ScoredItem,
+    ScoreInputs,
+    SessionProductivity,
+    StallReport,
+)
 
 # ------------------------------------------------------------------ scoring
 
@@ -19,7 +29,7 @@ from optimus.metrics.types import ScoredItem, ScoreInputs, StallReport
 def test_breakdown_is_never_empty_and_sums_to_the_score(config):
     """P3 / test 13. The breakdown is the answer to 'why this?'."""
     s = score_item(ScoreInputs(stakes=3, trackable_id=1), config)
-    assert len(s.components) == 6
+    assert len(s.components) == 7
     assert abs(sum(c.contribution for c in s.components) - s.score) < 1e-12
     assert s.breakdown()["components"]
 
@@ -53,6 +63,43 @@ def test_no_deadline_earns_no_urgency(config):
 def test_unknown_feasibility_does_not_manufacture_pressure(config):
     s = score_item(ScoreInputs(stakes=3, feasibility_margin_sessions=None), config)
     assert next(c for c in s.components if c.name == "feasibility_pressure").normalized == 0.0
+
+
+def test_density_ranks_work_by_what_it_costs_not_what_it_counts(config):
+    """A trackable measured in pages, some of which hold hour-long problems,
+    would otherwise lose every week to work that is merely easier to count."""
+    plain = score_item(ScoreInputs(stakes=3, trackable_id=1), config)
+    dense = score_item(
+        ScoreInputs(stakes=3, trackable_id=1, productivity_index=2.0), config
+    )
+    assert dense.score > plain.score
+
+
+def test_an_absent_productivity_index_contributes_nothing(config):
+    """P2, and the same restraint feasibility_pressure shows: no evidence that a
+    unit understates the work is not evidence that it does. A neutral 0.5 here
+    would manufacture rank for every trackable the system knows nothing about."""
+    absent = score_item(ScoreInputs(stakes=3, trackable_id=1), config)
+    density = next(c for c in absent.components if c.name == "density_underestimate")
+    assert density.raw is None
+    assert density.normalized == 0.0
+    assert density.contribution == 0.0
+
+
+def test_rescaled_weights_preserve_the_original_ratios(config):
+    """w_density was funded by scaling the five original positive weights by
+    0.90, so the relative importance §25.1 states is exactly unchanged."""
+    p = config.planning
+    assert p.w_feasibility / p.w_urgency == pytest.approx(0.30 / 0.20)
+    assert p.w_stakes / p.w_neglect == pytest.approx(0.20 / 0.10)
+    assert p.w_unblocking / p.w_neglect == pytest.approx(1.0)
+
+    original_five = p.w_feasibility + p.w_urgency + p.w_stakes + p.w_unblocking + p.w_neglect
+    assert original_five == pytest.approx(0.81)
+
+    # The reachable ceiling moves from 0.90 to 0.91 -- about one percent, which
+    # leaves tier_b_score_threshold meaning what it meant.
+    assert original_five + p.w_density == pytest.approx(0.91)
 
 
 def test_ranking_is_deterministic_for_unchanged_inputs(config):
@@ -162,3 +209,72 @@ def test_moving_the_deadline_is_never_the_default_option():
     assert set(FOUR_OPTIONS) == {
         "add_sessions", "cut_scope", "move_deadline", "declare_infeasible",
     }
+
+
+def test_a_drift_explained_by_density_is_held_not_raised(config, session_factory):
+    """Drift is measured in the primary unit. Where that unit understates the
+    work, prompting teaches the user the prompts are worthless -- the same
+    failure the §25.4 gate prevents, arriving by a different route."""
+    p = _pace(config, session_factory, (3, 4, 3, 4, 3, 4))
+    # Material drift (>= 2.0) but inside suppression_max_drift_sessions (4.0).
+    d = drift(100, p, planned_sessions_remaining=13, vs_version=1)
+    assert config.rebaseline.material_drift_sessions <= d.sessions
+    assert d.sessions <= config.productivity.suppression_max_drift_sessions
+
+    dense = SessionProductivity(
+        effective_output=22.0,
+        productivity_index=1.1,          # the work was there; the pages were not
+        density_factor=8.0,
+        progress_outlier=True,
+        explained_by_density=True,
+        fit=DensityFit(1.2, 6.0, 5.0, 0.95, 8, Basis.OBSERVED),
+        calculation=Calculation("", (), 1.1),
+    )
+    held = evaluate_metered(100, p, d, config, productivity=dense)
+
+    assert held.should_prompt is False
+    assert held.held_by_density is True
+    # §17's concern is drift that goes UNSEEN. A held prompt keeps its trigger so
+    # the weekly review can list it as deferred rather than losing it.
+    assert held.trigger == "drift"
+
+
+def test_density_cannot_hold_a_prompt_forever(config, session_factory):
+    """Past suppression_max_drift_sessions the work is behind whatever the
+    reason, and continuing to hold would be the silent drift §17 forbids."""
+    p = _pace(config, session_factory, (1, 1, 1, 1, 1, 1))
+    d = drift(200, p, planned_sessions_remaining=2, vs_version=1)
+    assert d.sessions > config.productivity.suppression_max_drift_sessions
+
+    dense = SessionProductivity(
+        None, 1.1, 8.0, True, True,
+        DensityFit(1.2, 6.0, 5.0, 0.95, 8, Basis.OBSERVED),
+        Calculation("", (), 1.1),
+    )
+    assert evaluate_metered(200, p, d, config, productivity=dense).should_prompt is True
+
+
+def test_genuinely_slow_work_is_never_held(config, session_factory):
+    """Density must not launder a real slowdown."""
+    p = _pace(config, session_factory, (3, 4, 3, 4, 3, 4))
+    d = drift(100, p, planned_sessions_remaining=13, vs_version=1)
+
+    slow = SessionProductivity(
+        None, 0.4, 1.0, True, False,
+        DensityFit(1.2, 6.0, 5.0, 0.95, 8, Basis.OBSERVED),
+        Calculation("", (), 0.4),
+    )
+    assert evaluate_metered(100, p, d, config, productivity=slow).should_prompt is True
+
+
+def test_an_unusable_fit_cannot_hold_a_prompt(config, session_factory):
+    """A fit the data does not support must not be able to silence a real one."""
+    p = _pace(config, session_factory, (3, 4, 3, 4, 3, 4))
+    d = drift(100, p, planned_sessions_remaining=13, vs_version=1)
+
+    nofit = SessionProductivity(
+        None, None, None, False, False,
+        DensityFit(None, None, None, None, 2, Basis.UNAVAILABLE, "too few sessions"),
+        Calculation("", (), None),
+    )
+    assert evaluate_metered(100, p, d, config, productivity=nofit).should_prompt is True

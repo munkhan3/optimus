@@ -134,7 +134,7 @@ export function WeekBoard({
               Sessions Placed
               {saving && <span className="ml-2 text-faint">Saving…</span>}
             </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+            <div className="font-mono text-micro uppercase tracking-label text-faint">
               {allocations.session_minutes}min Each
             </div>
           </div>
@@ -167,7 +167,7 @@ export function WeekBoard({
               Unplaced{narrow && " — Open Wider to Rearrange"}
             </div>
             {tray.length === 0 ? (
-              <div className="text-[11px] text-faint">
+              <div className="text-footnote text-faint">
                 Every committed session has a day. The daily plan will follow this shape.
               </div>
             ) : (
@@ -223,7 +223,7 @@ function DayRow({
       className="rounded-card bg-surface p-2.5"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+        <span className="font-mono text-micro uppercase tracking-label text-faint">
           {weekday} {date.slice(8)}
         </span>
         <div className="flex items-center gap-2">
@@ -231,13 +231,13 @@ function DayRow({
             <span
               key={m.key}
               title={`${m.title} due`}
-              className="truncate rounded-[3px] bg-raised px-1.5 py-0.5 text-[10px] text-muted"
+              className="truncate rounded-[3px] bg-raised px-1.5 py-0.5 text-micro text-muted"
             >
               ◆ {m.title}
             </span>
           ))}
           <span
-            className="font-mono text-[10px] tabular-nums"
+            className="font-mono text-micro tabular-nums"
             style={{ color: heavy ? "var(--color-warn)" : "var(--color-muted)" }}
           >
             {blocks.length}
@@ -257,7 +257,7 @@ function DayRow({
       </div>
 
       {heavy && (
-        <div className="mt-1.5 text-[10px] leading-tight text-warn">
+        <div className="mt-1.5 text-micro leading-tight text-warn">
           Above the catch-up cap. If the week only fits this way, it does not fit.
         </div>
       )}
@@ -279,7 +279,7 @@ function BlockChip({
       draggable={draggable}
       onDragStart={onDragStart}
       title={block.label}
-      className={`inline-block max-w-full truncate rounded-[4px] px-1.5 py-1 text-[11px] text-ink ${
+      className={`inline-block max-w-full truncate rounded-[4px] px-1.5 py-1 text-footnote text-ink ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
       }`}
       style={{ background: `color-mix(in oklab, ${block.color} 26%, var(--color-abyss))` }}
@@ -302,7 +302,7 @@ function Summary({ commitments }: { commitments: AllocationCommitment[] }) {
       {commitments.map((c) => (
         <div key={targetKey(c)} className="flex items-baseline justify-between gap-3">
           <span className="min-w-0 truncate text-body-sm text-muted">{c.label}</span>
-          <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums text-faint">
+          <span className="flex shrink-0 items-center gap-2 font-mono text-footnote tabular-nums text-faint">
             {c.placed_sessions} / {c.committed_sessions}
             {c.placed_sessions !== c.committed_sessions && <Tag tone="warn">Unplaced</Tag>}
           </span>

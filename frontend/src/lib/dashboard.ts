@@ -7,7 +7,17 @@
  */
 
 import { api } from "./api";
-import type { Feasibility, Health, PaceEstimate, Progress, Projection } from "./types";
+import type {
+  DensityFit,
+  Feasibility,
+  Health,
+  PaceEstimate,
+  PaceScores,
+  Progress,
+  Projection,
+  SeriesStability,
+  SessionProductivity,
+} from "./types";
 
 /** The user's IANA zone. Every day bucket on the server is cut against this. */
 export function browserTz(): string {
@@ -122,6 +132,42 @@ export function getThroughput(opts: { weeks?: number; taskType?: string } = {}) 
   return api.get<Throughput>(`/api/dashboard/throughput?${q}`);
 }
 
+// --------------------------------------------------------------- flow state
+
+export interface FlowWeek {
+  week_start: string;
+  flow_minutes: number;
+  sessions: number;
+  sessions_in_flow: number;
+}
+
+export interface FlowGoal {
+  goal_id: number;
+  title: string | null;
+  area_id: number | null;
+  flow_minutes: number;
+  sessions: number;
+  sessions_in_flow: number;
+  /** Share of this goal's sessions that ran past their planned end, or null. */
+  flow_rate: number | null;
+}
+
+export interface Flow {
+  from: string;
+  to: string;
+  weeks: FlowWeek[];
+  goals: FlowGoal[];
+  total_flow_minutes: number;
+  sessions: number;
+  sessions_in_flow: number;
+  flow_rate: number | null;
+}
+
+export function getFlow(opts: { weeks?: number } = {}) {
+  const q = new URLSearchParams({ tz: browserTz(), weeks: String(opts.weeks ?? 12) });
+  return api.get<Flow>(`/api/dashboard/flow?${q}`);
+}
+
 // ---------------------------------------------------------------- portfolio
 
 export interface PortfolioTrackable {
@@ -134,6 +180,17 @@ export interface PortfolioTrackable {
   total_units_source: string;
   progress: Progress;
   pace: PaceEstimate;
+  /** This trackable's own sessions, unpooled -- the pace score's numerator. */
+  trackable_pace: PaceEstimate;
+  pace_scores: PaceScores;
+  /** The second axis. Null unit means this trackable has no second axis. */
+  secondary_unit: string | null;
+  secondary_total_units: number | null;
+  secondary_total_units_source: string | null;
+  secondary_completed_units: number;
+  density_fit: DensityFit;
+  productivity: SessionProductivity | null;
+  series_stability: SeriesStability;
   required_pace: { point: number | null; denominator_source: string } | null;
   feasibility: Feasibility;
   projection: Projection;

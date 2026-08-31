@@ -3,6 +3,8 @@ import { api, ApiError, clearToken, getToken, setToken } from "./lib/api";
 import type { PlanItem, TrackableView, WorkSession } from "./lib/types";
 import { localDate } from "./lib/format";
 import { SessionBar } from "./components/SessionBar";
+import { FocusSession } from "./components/FocusSession";
+import { onDesktop, tellDesktop } from "./lib/desktop";
 import { Banner, Button, Card, Field } from "./components/Primitives";
 import { Shell, type Tab } from "./components/Shell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -16,6 +18,7 @@ import { Intake } from "./views/Intake";
 import { Dashboard } from "./views/Dashboard";
 import { Roadmap } from "./views/Roadmap";
 import { AccountPanel } from "./components/AccountPanel";
+import { SessionHistory } from "./components/SessionHistory";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -30,6 +33,11 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  /* Whether the session has the whole screen. A session opens expanded --
+     starting work is the moment that deserves the display -- and collapses to
+     the docked bar the moment the user needs the app underneath it again. */
+  const [expanded, setExpanded] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
 
   /// Both ways out of an account land here: the token is gone, the panel
   /// closes, and the gate comes back.
@@ -50,6 +58,12 @@ export default function App() {
       ]);
       setTrackables(t);
       setSession(s);
+      /* A session takes the screen whenever one is observed -- whether you just
+         started it or it was already running when the app opened. Either way it
+         is the thing you are doing, and getting out of it is one tap. Set here
+         rather than in an effect on the id: refresh() is the single funnel every
+         Start button already goes through. */
+      if (s) setExpanded(true);
       setHasGoals(g.length > 0);
       setError(null);
 
@@ -78,6 +92,51 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    function openHistory() {
+      setShowHistory(true);
+    }
+    // Listen for the native shell's request to open the session log.
+    window.addEventListener("optimus:open-session-log", openHistory as EventListener);
+    return () => window.removeEventListener("optimus:open-session-log", openHistory as EventListener);
+  }, []);
+
+  /* Tell the native shell what is running, so the menu-bar item and the
+     floating pill have a clock to keep. The fact of the session crosses the
+     bridge, never a tick: a minimised web view gets throttled, and a timer in
+     the menu bar that freezes when you look away is worse than none.
+
+     Keyed on the session id and re-announced when the title arrives, since
+     /api/trackables and /api/sessions/open resolve independently. */
+  const sessionId = session?.id ?? null;
+  const sessionTitle = session
+    ? (trackables.find((t) => t.trackable_id === session.trackable_id)?.title ??
+       "Session in progress")
+    : null;
+  useEffect(() => {
+    if (session === null) {
+      tellDesktop({ type: "session:end" });
+      return;
+    }
+    tellDesktop({
+      type: "session:start",
+      startedAtMs: new Date(session.started_at).getTime(),
+      plannedMinutes: session.planned_minutes,
+      title: sessionTitle ?? "Session in progress",
+    });
+    // Deliberately not keyed on `session`: it changes identity on every
+    // refresh, and re-announcing an unchanged session would restart the
+    // native clock several times a minute.
+  }, [session, sessionId, sessionTitle]);
+
+
+  /* Hand the session to the floating pill and let the shell minimise the
+     window. The app stays expanded underneath, so restoring it puts the
+     countdown back exactly where it was. */
+  const float = () => {
+    if (onDesktop()) tellDesktop({ type: "pill:show" });
+  };
 
   if (!authed) return <AccountGate onSaved={() => setAuthed(true)} />;
 
@@ -110,6 +169,12 @@ export default function App() {
            calendar for no gain. */
         bleed={tab === "tree" || tab === "roadmap" || tab === "dash"}
         onAccount={() => setAccountOpen(true)}
+        onOpenSessionLog={() => setShowHistory(true)}
+        trackables={trackables}
+        onSessionStarted={refresh}
+        /* Hidden while a session runs: SessionBar is the timer then, and two
+           live timers on one screen is the ambiguity this app avoids. */
+        canStartSession={!session && !busy}
       >
         {error && (
           <div className="mb-4">
@@ -141,16 +206,38 @@ export default function App() {
         </ErrorBoundary>
       </Shell>
 
-      {session && (
-        <SessionBar
-          session={session}
-          trackable={trackables.find((t) => t.trackable_id === session.trackable_id)}
-          onEnded={refresh}
-        />
-      )}
+      {session &&
+        (expanded ? (
+          <FocusSession
+            session={session}
+            trackable={trackables.find((t) => t.trackable_id === session.trackable_id)}
+            onEnded={refresh}
+            onCollapse={() => setExpanded(false)}
+            onFloat={float}
+          />
+        ) : (
+          <SessionBar
+            session={session}
+            trackable={trackables.find((t) => t.trackable_id === session.trackable_id)}
+            trackables={trackables}
+            onEnded={refresh}
+            onChanged={refresh}
+            onExpand={() => setExpanded(true)}
+            onFloat={float}
+          />
+        ))}
+
       {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onDeleted={leaveAccount} onSignedOut={leaveAccount} />}
+      {showHistory && <SessionHistory onClose={() => setShowHistory(false)} />}
     </>
   );
+}
+
+// Tell TypeScript about the custom event dispatched by the native menu.
+declare global {
+  interface WindowEventMap {
+    "optimus:open-session-log": CustomEvent;
+  }
 }
 
 function AccountGate({ onSaved }: { onSaved: () => void }) {
@@ -181,7 +268,7 @@ function AccountGate({ onSaved }: { onSaved: () => void }) {
     <div className="mx-auto flex min-h-dvh max-w-sm items-center px-5">
       <Card className="w-full">
         <div className="display text-heading">Optimus</div>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        <p className="mt-2 text-caption leading-relaxed text-muted">
           {mode === "login" ? "Sign in to continue your operating system." : "Create an account to start building your system."}
         </p>
         <Field
@@ -210,7 +297,7 @@ function AccountGate({ onSaved }: { onSaved: () => void }) {
           {mode === "login" ? "Sign In" : "Create Account"}
         </Button>
         <button
-          className="mt-4 w-full text-center text-[12px] text-faint hover:text-ink"
+          className="mt-4 w-full text-center text-caption text-faint hover:text-ink"
           onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}
         >
           {mode === "login" ? "New Here? Create an Account" : "Already Have an Account? Sign In"}

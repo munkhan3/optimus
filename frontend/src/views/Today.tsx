@@ -3,6 +3,7 @@ import { api, ApiError } from "../lib/api";
 import type { PlanItem, TrackableView } from "../lib/types";
 import { localDate, num } from "../lib/format";
 import { Banner, Button, Empty, InvertedCard, SectionLabel, Tag } from "../components/Primitives";
+import { SessionDuration, useSessionDefaults } from "../components/SessionDuration";
 
 /**
  * Today's plan (§25.5).
@@ -61,6 +62,7 @@ export function Today({
         <Button className="w-full" onClick={generate} pending={generating} disabled={busy}>
           Generate Today's Plan
         </Button>
+        <UntaggedStart onStarted={onChanged} sessionOpen={sessionOpen} onError={setError} />
         {error && <Banner>{error}</Banner>}
       </div>
     );
@@ -158,6 +160,11 @@ function usePlanItemActions(
 ) {
   const [pending, setPending] = useState<string | null>(null);
 
+  // §36.1 reversed: the length is the user's. Held here rather than at each
+  // render site so both the focused card and the list row share one control.
+  const { minutes: defaultMinutes } = useSessionDefaults();
+  const [minutes, setMinutes] = useState(defaultMinutes);
+
   async function run(key: string, fn: () => Promise<unknown>) {
     onError(null);
     setPending(key);
@@ -178,15 +185,67 @@ function usePlanItemActions(
 
   const start = () =>
     run("start", () =>
-      api.post(
-        "/api/sessions/start",
-        item.trackable_id
+      api.post("/api/sessions/start", {
+        ...(item.trackable_id
           ? { trackable_id: item.trackable_id }
-          : { milestone_id: item.milestone_id },
-      ),
+          : { milestone_id: item.milestone_id }),
+        planned_minutes: minutes,
+      }),
     );
 
-  return { pending, act, start };
+  return { pending, act, start, minutes, setMinutes };
+}
+
+/**
+ * Starting on something the plan does not know about.
+ *
+ * Work does not always arrive with a goal tree already built around it, and
+ * refusing to time it until one exists is the tool asking to be served. The
+ * session is inert while it runs — no trackable means no expected output, so it
+ * shapes no pace — and at the end its description is handed to the same intake
+ * interview that builds every other tree, then attached to what that creates.
+ */
+function UntaggedStart({
+  onStarted,
+  sessionOpen,
+  onError,
+}: {
+  onStarted: () => void;
+  sessionOpen: boolean;
+  onError: (message: string | null) => void;
+}) {
+  const { minutes: defaultMinutes } = useSessionDefaults();
+  const [minutes, setMinutes] = useState(defaultMinutes);
+  const [busy, setBusy] = useState(false);
+
+  async function start() {
+    onError(null);
+    setBusy(true);
+    try {
+      await api.post("/api/sessions/start", { planned_minutes: minutes });
+      onStarted();
+    } catch (e) {
+      onError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-line pt-4">
+      <SectionLabel>Something Else</SectionLabel>
+      <p className="mt-1.5 text-body-sm text-muted">
+        Start now, describe it after. If it turns out to matter, the interview will
+        build the goal from what you wrote and attach this session to it.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <SessionDuration value={minutes} onChange={setMinutes} disabled={sessionOpen || busy} />
+        <Button variant="ghost" onClick={start} pending={busy} disabled={sessionOpen || busy}>
+          Start Untracked
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /** Accept / modify / reject / defer, recorded (§18). Revealed preference is the
@@ -217,7 +276,7 @@ function ActionGroup({
             onClick={() => act(action)}
             disabled={pending !== null}
             aria-pressed={on}
-            className={`min-h-9 px-3 font-mono text-[10px] uppercase tracking-[0.12em] transition duration-200 ease-out disabled:opacity-40 ${
+            className={`min-h-9 px-3 font-mono text-micro uppercase tracking-label transition duration-200 ease-out disabled:opacity-40 ${
               i > 0 ? (inverted ? "border-l border-void/20" : "border-l border-line") : ""
             } ${i === 0 ? "rounded-l-[7px]" : ""} ${i === ACTIONS.length - 1 ? "rounded-r-[7px]" : ""} ${
               on
@@ -251,17 +310,21 @@ function LeadItem({
   onError: (m: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { pending, act, start } = usePlanItemActions(item, onChanged, onError);
+  const { pending, act, start, minutes, setMinutes } = usePlanItemActions(
+    item,
+    onChanged,
+    onError,
+  );
   const trackable = trackables.find((t) => t.trackable_id === item.trackable_id);
   const alloc = item.score_breakdown.daily_allocation;
 
   return (
     <InvertedCard>
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] font-medium text-void/50">
+        <span className="font-mono text-micro font-medium text-void/50">
           #{String(item.rank).padStart(2, "0")}
         </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-void/70">
+        <span className="font-mono text-micro uppercase tracking-label text-void/70">
           {item.tier} · {TIER_LABEL[item.tier]}
         </span>
       </div>
@@ -277,20 +340,33 @@ function LeadItem({
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button
-          onClick={start}
+      {/* §36.1 reversed. Prefilled, so Start stays one tap (§23.1). */}
+      <div className="mt-4">
+        <SessionDuration
+          value={minutes}
+          onChange={setMinutes}
           disabled={pending !== null || sessionOpen}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-control bg-void px-5 text-body-sm font-medium text-pure transition duration-200 ease-out hover:opacity-90 disabled:opacity-40"
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        {/* The same Button as every other Start in the app, on the one surface
+            where the primary has to flip. This was a hand-rolled <button> with
+            Button's classes copied and a padding step drifted, so the two Starts
+            on this very screen did not match. */}
+        <Button
+          variant="inverted"
+          onClick={start}
+          pending={pending === "start"}
+          disabled={pending !== null || sessionOpen}
         >
-          {pending === "start" ? "Starting…" : "Start"}
-          <span aria-hidden="true">→</span>
-        </button>
+          Start
+        </Button>
         <ActionGroup item={item} pending={pending} act={act} inverted />
       </div>
 
       {sessionOpen && (
-        <div className="mt-3 text-[13px] text-void/60">
+        <div className="mt-3 text-caption text-void/60">
           Finish the session you have running first.
         </div>
       )}
@@ -298,7 +374,7 @@ function LeadItem({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="mt-4 text-[13px] text-void/60 underline underline-offset-4 hover:text-void"
+        className="mt-4 text-caption text-void/60 underline underline-offset-4 hover:text-void"
       >
         {open ? "Hide Reasoning" : "Why This?"}
       </button>
@@ -324,7 +400,11 @@ function QueueRow({
   onError: (m: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { pending, act, start } = usePlanItemActions(item, onChanged, onError);
+  const { pending, act, start, minutes, setMinutes } = usePlanItemActions(
+    item,
+    onChanged,
+    onError,
+  );
   const trackable = trackables.find((t) => t.trackable_id === item.trackable_id);
   const alloc = item.score_breakdown.daily_allocation;
 
@@ -335,7 +415,7 @@ function QueueRow({
         aria-expanded={open}
         className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition duration-200 ease-out hover:bg-raised"
       >
-        <span className="font-mono text-[11px] text-faint">
+        <span className="font-mono text-footnote text-faint">
           {String(item.rank).padStart(2, "0")}
         </span>
         <span
@@ -346,7 +426,7 @@ function QueueRow({
           {item.label ?? trackable?.title ?? `Item ${item.rank}`}
         </span>
         {alloc && (
-          <span className="shrink-0 font-mono text-[11px] text-faint">
+          <span className="shrink-0 font-mono text-footnote text-faint">
             {num(alloc.per_day)} {alloc.unit}
           </span>
         )}
@@ -361,6 +441,7 @@ function QueueRow({
 
       {open && (
         <div className="space-y-4 px-5 pb-5">
+          <SessionDuration value={minutes} onChange={setMinutes} disabled={sessionOpen} />
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={start} pending={pending === "start"} disabled={sessionOpen}>
               Start
@@ -410,7 +491,7 @@ function Breakdown({ item }: { item: PlanItem }) {
         return (
           <div key={c.name} className="flex items-center gap-3">
             <span
-              className={`w-28 shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] ${zero ? dim : mid}`}
+              className={`w-28 shrink-0 font-mono text-micro uppercase tracking-label ${zero ? dim : mid}`}
             >
               {c.name.replace(/_/g, " ")}
             </span>
@@ -427,7 +508,7 @@ function Breakdown({ item }: { item: PlanItem }) {
               )}
             </div>
             <span
-              className={`w-14 shrink-0 text-right font-mono text-[11px] ${
+              className={`w-14 shrink-0 text-right font-mono text-footnote ${
                 zero ? dim : c.contribution < 0 ? "text-bad" : strong
               }`}
             >
@@ -438,11 +519,11 @@ function Breakdown({ item }: { item: PlanItem }) {
         );
       })}
 
-      <div className={`flex justify-between border-t border-line pt-2.5 font-mono text-[11px] ${strong}`}>
-        <span className="uppercase tracking-[0.12em]">Score</span>
+      <div className={`flex justify-between border-t border-line pt-2.5 font-mono text-footnote ${strong}`}>
+        <span className="uppercase tracking-label">Score</span>
         <span>{item.score.toFixed(4)}</span>
       </div>
-      <p className={`text-[11px] leading-relaxed ${dim}`}>
+      <p className={`text-footnote leading-relaxed ${dim}`}>
         Scored once for the week and reused today — logging a session does not reshuffle this list.
       </p>
     </div>

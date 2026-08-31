@@ -55,7 +55,7 @@ export function Review() {
 
   return (
     <div className="space-y-3">
-      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
+      <div className="font-mono text-footnote uppercase tracking-label text-faint">
         {review.week_start} – {review.week_end}
       </div>
 
@@ -63,7 +63,7 @@ export function Review() {
       <Card>
         <SectionLabel>Plan vs Actual</SectionLabel>
         {review.plan_vs_actual.length === 0 ? (
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">Nothing committed this week.</p>
+          <p className="mt-2 text-caption leading-relaxed text-muted">Nothing committed this week.</p>
         ) : (
           <div className="mt-3 space-y-3">
             {review.plan_vs_actual.map((row, i) => (
@@ -85,7 +85,7 @@ export function Review() {
                         }
                       />
                     </div>
-                    <div className="mt-0.5 text-[11px] text-muted">
+                    <div className="mt-0.5 text-footnote text-muted">
                       {num(row.units_done, 0)} of {num(row.target_units, 0)} committed
                     </div>
                   </>
@@ -100,7 +100,7 @@ export function Review() {
       {Object.keys(review.calibration).length > 0 && (
         <Card>
           <SectionLabel>What You Actually Deliver</SectionLabel>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          <p className="mt-2 text-caption leading-relaxed text-muted">
             Your output divided by what you expected. Trending toward 1.0 means your estimates are
             getting honest.
           </p>
@@ -110,7 +110,7 @@ export function Review() {
                 <span>{type}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{num(c.median_ratio, 2)}×</span>
-                  <span className="text-[11px] text-muted">
+                  <span className="text-footnote text-muted">
                     {c.n} session{c.n === 1 ? "" : "s"}
                     {c.n_retroactive > 0 && `, ${c.n_retroactive} recalled`}
                   </span>
@@ -131,14 +131,14 @@ export function Review() {
                 <div className="text-sm font-medium">{p.label}</div>
                 <div className="text-xs text-muted">{p.reason}</div>
                 {p.series && p.series.length > 0 && (
-                  <div className="mt-1 font-mono text-[11px] text-muted">
+                  <div className="mt-1 font-mono text-footnote text-muted">
                     {p.series.join(" → ")}
                   </div>
                 )}
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-muted">
+          <p className="mt-2 text-footnote text-muted">
             Four options, and moving the date is not the default one. Handle it in Plan.
           </p>
         </Card>
@@ -148,7 +148,7 @@ export function Review() {
       {review.model_estimated_values.length > 0 && (
         <Card>
           <SectionLabel>Numbers I Guessed</SectionLabel>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          <p className="mt-2 text-caption leading-relaxed text-muted">
             These were inferred, not measured. They are worth correcting — everything downstream
             rests on them.
           </p>

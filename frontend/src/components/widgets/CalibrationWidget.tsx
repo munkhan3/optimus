@@ -39,7 +39,7 @@ export function CalibrationWidget({ data }: WidgetProps) {
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="truncate text-body-sm text-ink">{titleCase(taskType)}</span>
                   <span
-                    className="shrink-0 font-mono text-[11px] tabular-nums"
+                    className="shrink-0 font-mono text-footnote tabular-nums"
                     style={{ color: toneColor[tone] }}
                   >
                     {ratio === null ? "—" : `${num(ratio, 2)}×`}
@@ -60,7 +60,7 @@ export function CalibrationWidget({ data }: WidgetProps) {
                   ))}
                 </div>
 
-                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+                <div className="font-mono text-micro uppercase tracking-label text-faint">
                   {report.n_timed} Timed · {report.n_retroactive} Retroactive
                 </div>
               </div>

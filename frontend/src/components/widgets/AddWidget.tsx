@@ -40,7 +40,7 @@ export function AddWidget({
               >
                 <div className="min-w-0">
                   <div className="text-body-sm text-ink">{spec.title}</div>
-                  <div className="text-[11px] text-faint">{spec.blurb}</div>
+                  <div className="text-footnote text-faint">{spec.blurb}</div>
                 </div>
                 <div className="shrink-0">
                   <Button variant="ghost" onClick={() => onAdd(spec.kind)}>

@@ -50,6 +50,13 @@ def to_session_obs(row: WorkSession) -> SessionObs:
         interrupted=row.interrupted,
         entered_retroactively=row.entered_retroactively,
         intent_met=row.intent_met,
+        # §24.3 normalizes each observation by its duration. Both lengths are
+        # passed rather than collapsed here, because deciding when a measured
+        # duration is not credible is the engine's judgement to make and should
+        # be testable without a database.
+        actual_minutes=row.actual_minutes,
+        planned_minutes=row.planned_minutes,
+        secondary_output=row.secondary_output,
     )
 
 
@@ -107,9 +114,22 @@ def pooled_sessions(db: Session, task_type: str) -> list[SessionObs]:
 
 
 def trackable_sessions(db: Session, trackable_id: int) -> list[SessionObs]:
+    """This trackable's own sessions, unpooled.
+
+    The counterpart to pooled_sessions. Pooling by task_type is right for §24.3,
+    where a new trackable should inherit the user's demonstrated speed at that
+    kind of work -- but it is wrong for any question about THIS body of work
+    specifically, because it blends every other book of the same kind into the
+    answer. The pace score needs both: this trackable's rate as the numerator,
+    the pooled rate as the denominator.
+
+    Unfinished sessions are excluded, as in pooled_sessions: a session still
+    running has no output to contribute and would only add a null to the sample.
+    """
     rows = db.exec(
         select(WorkSession)
         .where(WorkSession.trackable_id == trackable_id)
+        .where(WorkSession.ended_at.is_not(None))
         .order_by(WorkSession.started_at)
     ).all()
     return [to_session_obs(r) for r in rows]

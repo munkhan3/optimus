@@ -12,7 +12,6 @@ from ..models import Baseline, Milestone, Trackable
 from ..repo import metrics_service
 from ..repo.write_rules import gap_for_estimated_units, stamp_completion
 from ..schemas import TrackableCreate, TrackableUpdate
-from ..settings import get_metrics_config
 
 router = APIRouter(prefix="/api/trackables", tags=["trackables"])
 
@@ -79,11 +78,6 @@ def list_baselines(trackable_id: int, db: Session = Depends(get_session)) -> dic
         "current": rows[-1].model_dump(),
         "history": [r.model_dump() for r in rows],
     }
-
-
-@router.get("/{trackable_id}/session-minutes")
-def default_session_minutes() -> dict:
-    return {"minutes": get_metrics_config().session.minutes}
 
 
 @router.patch("/{trackable_id}")

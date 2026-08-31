@@ -7,6 +7,7 @@ import "react-resizable/css/styles.css";
 
 import {
   getCalibration,
+  getFlow,
   getLayout,
   getPortfolio,
   getRoadmap,
@@ -86,6 +87,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "roadmap" | "tree
       throughput: getThroughput,
       calibration: getCalibration,
       roadmap: getRoadmap,
+      flow: getFlow,
     };
     for (const source of sourceKey.split(",") as Source[]) {
       fetchers[source]()
@@ -294,7 +296,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "roadmap" | "tree
       {widgets && (
         <>
           <ViewBarLeft>
-            <span className="px-1 py-1.5 text-[12px] text-faint">
+            <span className="px-1 py-1.5 text-caption text-faint">
               {editing
                 ? "Drag to move, pull the corner to resize."
                 : `${widgets.length} Widget${widgets.length === 1 ? "" : "s"}`}

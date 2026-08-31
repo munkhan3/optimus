@@ -19,6 +19,11 @@ from sqlmodel import Session, select
 
 from optimus.metrics.drift import drift_against_all
 from optimus.metrics.pace import empirical_pace
+from optimus.metrics.productivity import (
+    density_fit,
+    series_stability,
+    session_productivity,
+)
 from optimus.metrics.progress import remaining_units
 from optimus.metrics.rebaseline import evaluate_exploratory, evaluate_metered
 from optimus.metrics.stall import detect_stall
@@ -37,6 +42,7 @@ from ..models import (
 )
 from ..repo import loader
 from ..repo.loader import week_start
+from ..repo.metrics_service import serialize
 from ..settings import get_metrics_config
 
 router = APIRouter(prefix="/api/reviews", tags=["reviews"])
@@ -120,6 +126,11 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
 
     # ---- rebaseline prompts, gated ------------------------------------------
     prompts = []
+    # Prompts held back because the primary unit is understating the work. §17's
+    # concern is drift that goes UNSEEN, so a held prompt is reported here rather
+    # than dropped -- deferred and visible, never silent.
+    held: list[dict] = []
+    switch_proposals: list[dict] = []
     for trackable in db.exec(select(Trackable)).all():
         state = loader.to_trackable_state(trackable)
         pace = empirical_pace(
@@ -134,16 +145,43 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
         )
         if current is None:
             continue
-        proposal = evaluate_metered(remaining_units(state), pace, current, config)
+        own = loader.trackable_sessions(db, trackable.id or 0)
+        fit = density_fit(own, config)
+        productivity = (
+            session_productivity(own[-1], own, fit, config) if own else None
+        )
+
+        proposal = evaluate_metered(
+            remaining_units(state), pace, current, config, productivity=productivity
+        )
+        entry = {
+            "trackable_id": trackable.id,
+            "label": trackable.title,
+            "trigger": proposal.trigger,
+            "reason": proposal.gate_reason,
+            "drift_sessions": current.sessions,
+            "options": list(proposal.options),
+        }
         if proposal.should_prompt:
-            prompts.append({
-                "trackable_id": trackable.id,
-                "label": trackable.title,
-                "trigger": proposal.trigger,
-                "reason": proposal.gate_reason,
-                "drift_sessions": current.sessions,
-                "options": list(proposal.options),
-            })
+            prompts.append(entry)
+        elif proposal.held_by_density:
+            held.append(entry)
+
+        # Whether the unit is wrong is a measurement, not an opinion: the two
+        # series are compared over the same sessions, and no proposal is made
+        # unless one is measurably tighter.
+        if trackable.secondary_unit:
+            stability = series_stability(own, config)
+            if stability.secondary_is_tighter:
+                switch_proposals.append({
+                    "trackable_id": trackable.id,
+                    "label": trackable.title,
+                    "from_unit": trackable.unit,
+                    "to_unit": trackable.secondary_unit,
+                    "reason": stability.reason,
+                    "stability": serialize(stability),
+                    "density_fit": serialize(fit),
+                })
 
     for milestone in db.exec(select(Milestone).where(Milestone.exploratory)).all():
         checks = [
@@ -171,6 +209,30 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
                 "series": list(stall.series),
                 "options": list(proposal.options),
             })
+
+    # ---- what the user wrote about their sessions ---------------------------
+    # Captured notes are surfaced with the numbers beside them. The model pass
+    # over them is per-session and on demand (POST /api/sessions/{id}/analyze):
+    # a review that silently fired one model call per note would be slow and
+    # would spend the request budget on sessions nobody asked about.
+    session_notes = []
+    for row in db.exec(
+        select(WorkSession)
+        .where(WorkSession.started_at >= datetime.combine(start, datetime.min.time()))
+        .where(WorkSession.started_at < datetime.combine(end, datetime.min.time()))
+        .order_by(WorkSession.started_at)
+    ).all():
+        if not (row.note or "").strip():
+            continue
+        session_notes.append({
+            "session_id": row.id,
+            "trackable_id": row.trackable_id,
+            "started_at": row.started_at.isoformat(),
+            "note": row.note,
+            "actual_output": row.actual_output,
+            "secondary_output": row.secondary_output,
+            "actual_minutes": row.actual_minutes,
+        })
 
     # ---- values the system guessed, resurfaced (D3) ---------------------------
     estimated = [
@@ -202,6 +264,13 @@ def weekly_review(week: date | None = None, db: Session = Depends(get_session)) 
         "calibration": calibration_by_type,
         # §25.4 gates these: nothing appears here on a wide interval.
         "rebaseline_prompts": prompts,
+        # Drift that IS real in the primary unit but is explained by the work
+        # being denser than the unit can see. Reported, not dropped.
+        "held_rebaselines": held,
+        # Where the second axis measures this work measurably better.
+        "metric_switch_proposals": switch_proposals,
+        # What the user wrote, with the numbers beside it.
+        "session_notes": session_notes,
         # D3: everything the model guessed comes back for correction.
         "model_estimated_values": estimated,
         "open_gaps": [
