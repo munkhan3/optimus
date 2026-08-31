@@ -138,7 +138,17 @@ class SessionStart(BaseModel):
     trackable_id: int | None = None
     milestone_id: int | None = None
     task_id: int | None = None
-    planned_minutes: int | None = None   # defaults to config [session].minutes
+    # §36.1 reversed: any positive length. Defaults to config [session].minutes;
+    # [session].presets are the one-tap choices, not a whitelist.
+    planned_minutes: int | None = Field(default=None, gt=0)
+    # A session attached to nothing yet. Its task_type cannot be resolved from a
+    # trackable, so it is declared -- and it shapes no pace, because with no
+    # trackable there is no expected_output and so no actual_output either.
+    task_type: str | None = None
+    # A target the user DECLARES on the second axis ("8 problems this session"),
+    # unlike expected_output which §23.4 requires to come from pace_hat.
+    # Declaring this corrupts nothing: it feeds no calibration and no projection.
+    target_secondary_output: float | None = Field(default=None, ge=0)
 
 
 class SessionEnd(BaseModel):
@@ -151,8 +161,16 @@ class SessionEnd(BaseModel):
     actual_output: float | None = None
     intent_met: bool | None = None
     interrupted: bool = False
+    # Time spent past the planned end. The client sends it because only the
+    # client knows when the countdown actually crossed zero; omitting it falls
+    # back to the wall-clock overrun.
+    flow_minutes: float | None = Field(default=None, ge=0)
     focus_rating: int | None = Field(default=None, ge=1, le=5)
+    # Always offered, never required. The §23 interaction budget survives because
+    # the field is collapsed until asked for -- and an outlier session asks.
     note: str | None = None
+    # The second axis: work done, as opposed to progress made.
+    secondary_output: float | None = Field(default=None, ge=0)
     # D12: offered alongside, prefilled, ALWAYS skippable. Omitting it writes no
     # progress_check row at all (AC16).
     self_assessed_pct: float | None = Field(default=None, ge=0, le=100)
@@ -172,6 +190,48 @@ class SessionRetroactive(BaseModel):
     actual_minutes: float | None = None
     interrupted: bool = False
     note: str | None = None
+    secondary_output: float | None = Field(default=None, ge=0)
+
+
+class SessionReflection(BaseModel):
+    """What happened in a session, recorded after it was already saved.
+
+    Ending stays one tap (§23.2), so the prompt that asks why an unusual session
+    went the way it did necessarily arrives afterwards -- and needs somewhere to
+    put the answer.
+
+    This is also the only path by which a model-extracted count becomes stored
+    data. The analysis endpoint RETURNS what it read out of the note and writes
+    nothing; passing it through here makes it a user-supplied number, which is
+    what lets the mirrored columns carry no per-observation provenance field.
+    """
+
+    note: str | None = None
+    secondary_output: float | None = Field(default=None, ge=0)
+    # Set on the trackable when it has no second axis yet, so confirming a count
+    # names the unit in the same action rather than requiring a separate edit.
+    secondary_unit: str | None = None
+
+
+class SessionAttach(BaseModel):
+    """Attaching an untagged session to what the interview just created."""
+
+    trackable_id: int | None = None
+    milestone_id: int | None = None
+    actual_output: float | None = Field(default=None, ge=0)
+    secondary_output: float | None = Field(default=None, ge=0)
+
+
+class MetricSwitch(BaseModel):
+    """Promote the second axis to primary (§25.3, resolution `change_metric`).
+
+    `secondary_total_units` is the one field here that may hold a model estimate,
+    which is why its provenance travels with it and is written to the trackable.
+    """
+
+    secondary_total_units: float = Field(gt=0)
+    secondary_total_units_source: str = "model_estimated"
+    rationale: str = Field(min_length=1)
 
 
 # ------------------------------------------------------------------ baselines

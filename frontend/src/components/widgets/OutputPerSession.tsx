@@ -53,7 +53,7 @@ function Box({
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-3">
         <span className="truncate text-body-sm text-ink">{titleCase(row.task_type)}</span>
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+        <span className="shrink-0 font-mono text-footnote tabular-nums text-muted">
           {num(row.median)} <span className="text-faint">/ Session</span>
         </span>
       </div>
@@ -81,7 +81,7 @@ function Box({
         />
       </div>
 
-      <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+      <div className="font-mono text-micro uppercase tracking-label text-faint">
         {row.n} Session{row.n === 1 ? "" : "s"} · {row.session_minutes}min
         {provisional && " · Provisional"}
       </div>

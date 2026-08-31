@@ -33,7 +33,7 @@ export function RoadmapCompact({ data, onNavigate }: WidgetProps) {
               {onNavigate && (
                 <button
                   onClick={() => onNavigate("roadmap")}
-                  className="rounded-control px-2 py-1 text-[11px] text-faint transition hover:bg-raised hover:text-ink"
+                  className="rounded-control px-2 py-1 text-footnote text-faint transition hover:bg-raised hover:text-ink"
                 >
                   Open Roadmap →
                 </button>
@@ -51,7 +51,7 @@ export function RoadmapCompact({ data, onNavigate }: WidgetProps) {
                   {upcoming.slice(0, 6).map((m) => (
                     <div key={m.key} className="flex items-baseline justify-between gap-3">
                       <span className="min-w-0 truncate text-body-sm text-ink">{m.title}</span>
-                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-faint">
+                      <span className="shrink-0 font-mono text-footnote tabular-nums text-faint">
                         {dateShort(m.date)}
                       </span>
                     </div>

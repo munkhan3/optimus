@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { Calibration, Portfolio, Roadmap, Throughput } from "../../lib/dashboard";
+import type { Calibration, Flow, Portfolio, Roadmap, Throughput } from "../../lib/dashboard";
 
 /**
  * The data a widget can read.
@@ -18,6 +18,7 @@ export interface DashboardData {
   throughput?: Throughput | null;
   calibration?: Calibration | null;
   roadmap?: Roadmap | null;
+  flow?: Flow | null;
 }
 
 export interface WidgetProps {

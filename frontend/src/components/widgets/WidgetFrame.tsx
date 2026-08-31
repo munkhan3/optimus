@@ -59,7 +59,7 @@ export function UnknownWidget({ kind }: { kind: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
       <div className="text-body-sm text-muted">This Widget Needs a Newer Version</div>
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">{kind}</div>
+      <div className="font-mono text-micro uppercase tracking-label text-faint">{kind}</div>
     </div>
   );
 }

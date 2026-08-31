@@ -170,7 +170,7 @@ function CapacitySection({
             <div key={goal.id} className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{goal.title}</div>
-                <div className="text-[11px] text-muted">
+                <div className="text-footnote text-muted">
                   stakes {goal.stakes}
                   {budget?.share != null && ` · ${Math.round(budget.share * 100)}% of the week`}
                 </div>
@@ -267,7 +267,7 @@ function RankingSection({
                 {r.rank}. {r.label}
               </div>
               {/* §25.6: this line comes from the stored breakdown, not the model. */}
-              <div className="text-[11px] text-muted">{r.explanation}</div>
+              <div className="text-footnote text-muted">{r.explanation}</div>
             </div>
             <input
               type="number"
@@ -357,13 +357,13 @@ function AreasSection({ areas, onChanged }: { areas: Area[]; onChanged: () => vo
         <SectionLabel>Areas of Life</SectionLabel>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
+          className="text-caption text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
         >
           {open ? "Close" : "Add"}
         </button>
       </div>
 
-      <p className="mt-2 text-[13px] leading-relaxed text-muted">
+      <p className="mt-2 text-caption leading-relaxed text-muted">
         How the goal graph is grouped. An area is a label, not a goal — it has no deadline and
         never competes for time.
       </p>
@@ -377,20 +377,20 @@ function AreasSection({ areas, onChanged }: { areas: Area[]; onChanged: () => vo
               style={{ background: colors.get(a.id) }}
             />
             <span className="min-w-0 flex-1 truncate text-body-sm">{a.name}</span>
-            <span className="font-mono text-[11px] text-faint">
+            <span className="font-mono text-footnote text-faint">
               {a.goal_count ?? 0} {(a.goal_count ?? 0) === 1 ? "goal" : "goals"}
             </span>
             <button
               disabled={busy}
               onClick={() => void run(() => api.delete(`/api/areas/${a.id}`))}
-              className="text-[11px] text-faint underline underline-offset-4 transition duration-200 ease-out hover:text-bad disabled:opacity-40"
+              className="text-footnote text-faint underline underline-offset-4 transition duration-200 ease-out hover:text-bad disabled:opacity-40"
             >
               Remove
             </button>
           </div>
         ))}
         {areas.length === 0 && (
-          <div className="text-[13px] text-muted">
+          <div className="text-caption text-muted">
             No areas yet — every goal shows as unassigned.
           </div>
         )}
@@ -412,7 +412,7 @@ function AreasSection({ areas, onChanged }: { areas: Area[]; onChanged: () => vo
           >
             Create Area
           </Button>
-          <p className="text-[11px] text-muted">
+          <p className="text-footnote text-muted">
             Removing an area later un-files its goals. It never deletes them.
           </p>
         </div>
@@ -440,7 +440,7 @@ function GoalsSection({
         <SectionLabel>Goals</SectionLabel>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
+          className="text-caption text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
         >
           {open ? "Close" : "Add"}
         </button>
@@ -539,7 +539,7 @@ function NewGoalForm({ areas, onCreated }: { areas: Area[]; onCreated: () => voi
           Park It
         </Button>
       </div>
-      <p className="text-[11px] text-muted">
+      <p className="text-footnote text-muted">
         Activating needs a deadline. A goal without one is an intention, not work in progress —
         park it instead.
       </p>
@@ -648,7 +648,7 @@ function RebaselineForm({
             }`}
           >
             <div className="text-sm font-medium">{o.label}</div>
-            <div className="text-[11px] text-muted">{o.hint}</div>
+            <div className="text-footnote text-muted">{o.hint}</div>
           </button>
         ))}
       </div>
@@ -755,12 +755,12 @@ function GoalRow({
         {/* §12: parked goals are visible but compete for nothing. */}
         {goal.activation === "parked" && <Tag>Parked</Tag>}
         {goal.dod_source === "model_estimated" && <Tag tone="warn">DoD Inferred</Tag>}
-        {goal.deadline && <span className="text-[11px] text-muted">{goal.deadline}</span>}
+        {goal.deadline && <span className="text-footnote text-muted">{goal.deadline}</span>}
       </button>
 
       {open && (
         <div className="space-y-2 border-t border-line px-3 py-2">
-          <div className="text-[11px] text-muted">
+          <div className="text-footnote text-muted">
             Done when: {goal.definition_of_done}
           </div>
 
@@ -781,7 +781,7 @@ function GoalRow({
           )}
           <button
             onClick={() => setAdding((v) => !v)}
-            className="text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
+            className="text-caption text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
           >
             {adding ? "Cancel" : "Add Milestone"}
           </button>
@@ -820,7 +820,7 @@ function MilestoneRowView({
       </div>
       <button
         onClick={() => setAdding((v) => !v)}
-        className="mt-1 text-[13px] text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
+        className="mt-1 text-caption text-muted underline underline-offset-4 transition duration-200 ease-out hover:text-ink"
       >
         {adding ? "Cancel" : "Add Trackable"}
       </button>
@@ -887,7 +887,7 @@ function NewMilestoneForm({ goalId, onCreated }: { goalId: number; onCreated: ()
             onChange={setSessions}
             placeholder="6"
           />
-          <p className="text-[11px] text-muted">
+          <p className="text-footnote text-muted">
             Budgeted in sessions rather than invented units. Forcing a number where none exists
             makes every projection downstream rest on a figure nobody believes.
           </p>
@@ -1007,7 +1007,7 @@ function NewTrackableForm({
       </label>
       {/* §13: the estimate is the starting point the system will correct. Saying
           so up front is what makes being wrong feel like data rather than failure. */}
-      <p className="text-[11px] text-muted">
+      <p className="text-footnote text-muted">
         Your per-session guess is only a starting point — it gets replaced by what you actually do.
       </p>
       <Button className="w-full" disabled={!title || !total} onClick={create}>

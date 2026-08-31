@@ -61,7 +61,18 @@ TRACKABLE_STATUS = ("not_started", "in_progress", "done", "abandoned")
 GAP_STATUS = ("open", "answered", "dismissed")
 TIER = ("A", "B", "C", "D")
 USER_ACTION = ("accepted", "modified", "rejected", "deferred")
-RESOLUTION = ("add_sessions", "cut_scope", "move_deadline", "declare_infeasible")
+# §17 fixes exactly four ways to respond to divergence between plan and reality.
+# `change_metric` is a fifth entry here but NOT a fifth option there: re-expressing
+# scope in a better unit is a different act, not another way to absorb slip. It is
+# unreachable from the drift flow -- see FOUR_OPTIONS in optimus/metrics/rebaseline.py,
+# which is deliberately left at four.
+RESOLUTION = (
+    "add_sessions",
+    "cut_scope",
+    "move_deadline",
+    "declare_infeasible",
+    "change_metric",
+)
 TASK_TYPE = ("reading", "problems", "writing", "exploratory", "admin")
 
 
@@ -273,6 +284,19 @@ class Trackable(SQLModel, table=True):
         CheckConstraint(_in("status", TRACKABLE_STATUS), name="trackable_status_valid"),
         CheckConstraint("total_units > 0", name="trackable_total_units_positive"),
         CheckConstraint("completed_units >= 0", name="trackable_completed_non_negative"),
+        CheckConstraint(
+            "secondary_total_units IS NULL OR secondary_total_units > 0",
+            name="trackable_secondary_total_positive",
+        ),
+        CheckConstraint(
+            "secondary_completed_units >= 0",
+            name="trackable_secondary_completed_non_negative",
+        ),
+        CheckConstraint(
+            "secondary_total_units_source IS NULL OR "
+            + _in("secondary_total_units_source", PROVENANCE),
+            name="trackable_secondary_units_source_valid",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -288,6 +312,21 @@ class Trackable(SQLModel, table=True):
     target_date: date | None = None
     prior_pace: float | None = None   # the user's own initial units/session estimate
     task_type: str
+    # The second axis. `unit` measures PROGRESS and is chosen because its
+    # denominator is knowable (a book has 380 pages); it is a poor measure of
+    # WORK, because a page holding a problem is not a page of prose. The
+    # secondary unit measures work, and needs no total to be useful -- which is
+    # the point, since the total is exactly what is hard to discover.
+    #
+    # NULL secondary_unit means "no second axis", never zero.
+    secondary_unit: str | None = None
+    # Only needed to promote this axis to primary, and the only field here that
+    # can hold a model estimate -- hence the provenance column beside it.
+    secondary_total_units: float | None = None
+    secondary_total_units_source: str | None = None
+    # Cache of SUM(secondary_output), maintained by the same trigger that owns
+    # completed_units so the two cannot drift apart.
+    secondary_completed_units: float = Field(default=0.0, sa_column_kwargs=ZERO_DEFAULT)
     exploratory: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
     status: str = "not_started"
     created_at: datetime = Field(default_factory=_utcnow, sa_type=TZ)
@@ -403,6 +442,14 @@ class WorkSession(SQLModel, table=True):
         CheckConstraint(
             "ended_at IS NULL OR ended_at >= started_at", name="work_session_ends_after_start"
         ),
+        CheckConstraint(
+            "flow_minutes IS NULL OR flow_minutes >= 0",
+            name="work_session_flow_minutes_non_negative",
+        ),
+        CheckConstraint(
+            "secondary_output IS NULL OR secondary_output >= 0",
+            name="work_session_secondary_output_non_negative",
+        ),
         Index("work_session_task_type_started", "task_type", "started_at"),
     )
 
@@ -420,7 +467,17 @@ class WorkSession(SQLModel, table=True):
     actual_minutes: float | None = None
     expected_output: float | None = None
     actual_output: float | None = None
+    # The second axis, per session. `secondary_expected_output` is a target the
+    # user DECLARES ("8 problems this session"), unlike expected_output which
+    # §23.4 requires to come from pace_hat. Declaring a target here corrupts
+    # nothing: it feeds no calibration and no projection.
+    secondary_output: float | None = None
+    secondary_expected_output: float | None = None
     intent_met: bool | None = None      # exploratory sessions, instead of a count
+    # Minutes worked PAST planned_minutes, once the countdown had already run
+    # out and the user chose to keep going. Stored rather than derived so the
+    # client can report what it actually watched happen; see end_session.
+    flow_minutes: float | None = None
     focus_rating: int | None = None
     note: str | None = None
     interrupted: bool = Field(default=False, sa_column_kwargs=FALSE_DEFAULT)
@@ -495,6 +552,10 @@ class Baseline(SQLModel, table=True):
     version: int
     planned_sessions: int
     scope_units: float | None = None
+    # §25.3 keeps baseline history forever, and a metric switch changes what
+    # scope_units COUNTS. Without recording the unit, v1's "380" and v2's "210"
+    # look like a scope cut rather than the same work in a different currency.
+    unit: str | None = None
     target_date: date
     resolution: str | None = None
     rationale: str | None = None

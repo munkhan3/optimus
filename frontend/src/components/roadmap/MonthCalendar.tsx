@@ -52,7 +52,7 @@ export function MonthCalendar({
               className={`min-h-0 overflow-auto p-1.5 ${cell.inMonth ? "bg-surface" : "bg-bg"}`}
             >
               <div
-                className={`mb-1 inline-flex size-5 items-center justify-center rounded-full font-mono text-[10px] tabular-nums ${
+                className={`mb-1 inline-flex size-5 items-center justify-center rounded-full font-mono text-micro tabular-nums ${
                   isToday
                     ? "bg-pure text-void"
                     : cell.inMonth
@@ -68,7 +68,7 @@ export function MonthCalendar({
                     key={m.key}
                     onClick={() => onPick?.(m)}
                     title={`${m.title} — due ${m.date}`}
-                    className="block w-full truncate rounded-[3px] px-1.5 py-1 text-left text-[11px] transition hover:brightness-125"
+                    className="block w-full truncate rounded-[3px] px-1.5 py-1 text-left text-footnote transition hover:brightness-125"
                     style={{
                       background:
                         m.status === "done"

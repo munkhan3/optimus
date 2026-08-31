@@ -25,7 +25,7 @@ import type { ReactNode } from "react";
 const BOTTOM = "bottom-[calc(76px+env(safe-area-inset-bottom))] lg:bottom-4";
 
 const CHIP =
-  "px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition duration-200";
+  "px-2.5 py-1.5 font-mono text-micro uppercase tracking-label transition duration-200";
 
 /** Bottom-left. A segmented control over the view's modes. */
 export function ViewSwitch<T extends string>({
@@ -114,7 +114,7 @@ export function ViewBarRight({ children }: { children: ReactNode }) {
 export function ViewHint({ children }: { children: ReactNode }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 ${BOTTOM} z-10 hidden px-4 text-center text-[12px] text-faint sm:block`}
+      className={`pointer-events-none absolute inset-x-0 ${BOTTOM} z-10 hidden px-4 text-center text-caption text-faint sm:block`}
     >
       {children}
     </div>
@@ -130,7 +130,7 @@ export function ViewHint({ children }: { children: ReactNode }) {
  */
 export function ViewLegend({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute right-4 top-4 z-20 flex flex-wrap justify-end gap-x-4 gap-y-1 rounded-control border border-line bg-surface/90 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.08em] text-faint backdrop-blur">
+    <div className="pointer-events-none absolute right-4 top-4 z-20 flex flex-wrap justify-end gap-x-4 gap-y-1 rounded-control border border-line bg-surface/90 px-3 py-2 font-mono text-micro uppercase tracking-label text-faint backdrop-blur">
       {children}
     </div>
   );

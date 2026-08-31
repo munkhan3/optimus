@@ -116,7 +116,7 @@ export function CommitmentGrid({ config }: WidgetProps) {
           height rather than be squeezed by its siblings. */}
       <div className="flex shrink-0 gap-2 overflow-x-auto">
         <div
-          className="flex shrink-0 flex-col justify-between pt-px font-mono text-[9px] uppercase tracking-[0.1em] text-faint"
+          className="flex shrink-0 flex-col justify-between pt-px font-mono text-micro uppercase tracking-label text-faint"
           style={{ height }}
           aria-hidden="true"
         >
@@ -191,7 +191,7 @@ export function CommitmentGrid({ config }: WidgetProps) {
 
 function Legend({ peak, label }: { peak: number; label: string }) {
   return (
-    <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+    <div className="flex items-center gap-1.5 font-mono text-micro uppercase tracking-label text-faint">
       <span>Less</span>
       {[0, 1, 2, 3, 4].map((level) => (
         <span
@@ -229,7 +229,7 @@ function PeriodRows({ periods }: { periods: Activity["periods"] }) {
               <span
                 key={p.start}
                 title={`${p.start} – ${p.end}: ${num(p.done, 0)} of ${num(p.target, 0)} ${p.unit}`}
-                className="inline-flex h-5 min-w-[34px] items-center justify-center rounded-[3px] px-1.5 font-mono text-[9px] tabular-nums"
+                className="inline-flex h-5 min-w-[34px] items-center justify-center rounded-[3px] px-1.5 font-mono text-micro tabular-nums"
                 style={{
                   background:
                     p.met === null

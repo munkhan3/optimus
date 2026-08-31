@@ -239,7 +239,7 @@ export function Intake({
         <Card className="max-w-md">
           <SectionLabel>Intake Is Offline</SectionLabel>
           <div className="display mt-2 text-subheading">No Model Key Configured</div>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          <p className="mt-2 text-caption leading-relaxed text-muted">
             The interview needs <code className="text-ink">OPTIMUS_GEMINI_API_KEY</code> in{" "}
             <code className="text-ink">.env.local</code>. Until then you can still build your
             goals by hand under <span className="text-ink">Goals &amp; Capacity</span> — the
@@ -282,7 +282,7 @@ export function Intake({
         {clusters.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
             <Mark className="size-7 text-line" />
-            <p className="max-w-sm text-[13px] leading-relaxed text-faint">
+            <p className="max-w-sm text-caption leading-relaxed text-faint">
               Here&rsquo;s where your path takes shape. The map draws itself as we talk —
               goals, the milestones under them, then what actually gets counted.
             </p>
@@ -310,7 +310,7 @@ export function Intake({
               <div className="flex flex-col items-center pb-2 pt-6 text-center">
                 <PresenceOrb state={orbState} level={0.2} />
                 <div className="display mt-5 text-heading">What Are You Trying to Do?</div>
-                <p className="mt-3 max-w-md text-[13px] leading-relaxed text-muted">
+                <p className="mt-3 max-w-md text-caption leading-relaxed text-muted">
                   Everything on your mind — goals, deadlines, half-formed ideas. One pass,
                   no structure needed.
                 </p>
@@ -349,7 +349,7 @@ export function Intake({
         {hasProposal && (
           <div className="border-t border-line px-4 py-2.5 sm:px-6 lg:px-10">
             <div className="mx-auto flex w-full max-w-[820px] items-center justify-between gap-4">
-              <div className="min-w-0 text-[12px] leading-relaxed text-muted">
+              <div className="min-w-0 text-caption leading-relaxed text-muted">
                 {complete
                   ? "That's enough to work with. Nothing is saved yet."
                   : `Nothing saved yet · ${asked} answered · ${questions.length} worth asking`}

@@ -233,10 +233,13 @@ final class RetryBox: NSObject {
 
 // ---------------------------------------------------------------- app
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate,
+                         WKScriptMessageHandler, NSWindowDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var status: StatusView!
+    /// The floating pill and the menu-bar countdown. See SessionHUD.swift.
+    let hud = SessionHUD()
 
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(
@@ -249,12 +252,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.minSize = NSSize(width: 380, height: 560)
         window.setFrameAutosaveName("OptimusMain")
         window.center()
+        // So the HUD learns when the window goes away: minimising is exactly
+        // when a session needs somewhere else to be visible.
+        window.delegate = self
 
         let cfg = WKWebViewConfiguration()
         // The UI is served from localhost and is the only thing this window ever
         // loads; DevTools stay available because debugging the real app beats
         // reproducing a bug in a browser tab.
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        // The page tells this side what session is running; see lib/desktop.ts.
+        // Absent everywhere else, so the browser build is unaffected.
+        cfg.userContentController.add(self, name: "optimus")
         webView = WKWebView(frame: .zero, configuration: cfg)
         webView.navigationDelegate = self
         webView.setValue(false, forKey: "drawsBackground")
@@ -265,8 +274,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         buildMenu()
+        hud.onOpenApp = { [weak self] in
+            guard let self else { return }
+            // Back in the app the countdown is on screen at full size, so the
+            // pill has nothing left to say -- but it is only hidden, not
+            // dismissed, so collapsing again brings the same one back.
+            self.hud.hidePill()
+            self.window.deminiaturize(nil)
+            self.window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         start()
     }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        // App lost focus — surface the pill so the timer remains visible above
+        // other applications, unless the user explicitly dismissed it.
+        hud.showPillOnDeactivate()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // App regained focus — hide the pill so the main window presents the
+        // canonical countdown again.
+        hud.hidePillOnActivate()
+    }
+
+    // ------------------------------------------------------------- the bridge
+
+    /// Messages from the page. Anything unrecognised is ignored rather than
+    /// trusted: this handler is reachable from whatever the web view loaded.
+    func userContentController(
+        _ controller: WKUserContentController, didReceive message: WKScriptMessage
+    ) {
+        guard let body = message.body as? [String: Any],
+              let type = body["type"] as? String else { return }
+
+        switch type {
+        case "session:start":
+            guard let ms = body["startedAtMs"] as? Double,
+                  let planned = body["plannedMinutes"] as? Int else { return }
+            hud.start(SessionInfo(
+                startedAt: Date(timeIntervalSince1970: ms / 1000),
+                plannedMinutes: planned,
+                title: (body["title"] as? String) ?? "Session"))
+        case "session:end":
+            hud.stop()
+        case "pill:show":
+            /* Collapsing means leaving. The pill goes up first so there is no
+               frame in which the session has no surface at all, and only then
+               does the window get out of the way. */
+            hud.showPill()
+            window.miniaturize(nil)
+        case "pill:hide":
+            hud.hidePill()
+        default:
+            break
+        }
+    }
+
+    // ------------------------------------------------------- window visibility
+
+    func windowDidMiniaturize(_ n: Notification) { hud.setWindowHidden(true) }
+    func windowDidDeminiaturize(_ n: Notification) { hud.setWindowHidden(false) }
+    func applicationDidHide(_ n: Notification) { hud.setWindowHidden(true) }
+    func applicationDidUnhide(_ n: Notification) { hud.setWindowHidden(false) }
 
     func start() {
         window.contentView = status
@@ -299,7 +370,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
 
-    func applicationWillTerminate(_ n: Notification) { Preflight.stop() }
+    func applicationWillTerminate(_ n: Notification) {
+        hud.stop()
+        Preflight.stop()
+    }
 
     func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows f: Bool) -> Bool {
         if !f { window.makeKeyAndOrderFront(nil) }
@@ -335,6 +409,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     @objc func reload() { syncAndReload(); webView.reload() }
     @objc func openLogs() { NSWorkspace.shared.open(LOG_DIR) }
     @objc func openInBrowser() { NSWorkspace.shared.open(BASE) }
+    @objc func openSessionLog() {
+        // Dispatch a custom event into the page to ask it to open the session log modal.
+        let js = "window.dispatchEvent(new CustomEvent('optimus:open-session-log'))"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
 
     func buildMenu() {
         let main = NSMenu()
@@ -373,12 +452,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         viewItem.submenu = view
         main.addItem(viewItem)
 
+        // Session log in the menu bar
+        view.addItem(.separator())
+        view.addItem(withTitle: "Session Log", action: #selector(openSessionLog), keyEquivalent: "l")
+
         NSApp.mainMenu = main
     }
 }
-
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.regular)
-app.run()

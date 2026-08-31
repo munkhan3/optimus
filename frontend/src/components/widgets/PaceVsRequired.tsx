@@ -36,7 +36,7 @@ export function PaceVsRequired({ data }: WidgetProps) {
                 <div key={t.trackable_id} className="space-y-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-body-sm text-ink">{t.title}</span>
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                    <span className="shrink-0 font-mono text-footnote tabular-nums text-muted">
                       {num(t.pace.point)} <span className="text-faint">of</span>{" "}
                       {required === null ? "—" : num(required)} {t.unit}
                     </span>
@@ -67,11 +67,20 @@ export function PaceVsRequired({ data }: WidgetProps) {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-footnote text-faint">
                     <span>{basisLabel(t.pace.basis, t.pace.n_sessions)}</span>
                     {t.pace.interval?.provisional && <Tag tone="warn">Provisional</Tag>}
                     {t.required_pace && (
                       <span>From {titleCase(t.required_pace.denominator_source)}</span>
+                    )}
+                    {/* The dimensionless readings, kept apart on purpose (D6):
+                        one is about the user, the other about the plan. Absent
+                        means absent -- neither is rendered as 1.0 (P2). */}
+                    {t.pace_scores.pace !== null && (
+                      <span>pace {num(t.pace_scores.pace, 2)}×</span>
+                    )}
+                    {t.pace_scores.track !== null && (
+                      <span>on-track {num(t.pace_scores.track, 2)}×</span>
                     )}
                   </div>
                 </div>

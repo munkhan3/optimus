@@ -7,9 +7,27 @@
 # replaced by measured values once data exists. Do not treat them as tuned.
 
 [session]
-# §36.1, resolved: fixed-length sessions. Pace is units-per-session and pools
-# cleanly by task_type with no normalization. Longer work = consecutive sessions.
+# §36.1, REVERSED. This was "resolved: fixed-length sessions ... pools cleanly by
+# task_type with no normalization". It is not resolved and the resolution was
+# wrong: forcing an hour of work into consecutive 25-minute rows is bookkeeping
+# the user has to perform on the system's behalf, and it never survived contact
+# with reading a dense chapter.
+#
+# `minutes` is now the DEFAULT duration and the normalization constant, not a
+# rule. Sessions may be any length; §24.3 divides each observation by
+# (actual_minutes / minutes) so a 50-minute session contributes its rate, not
+# its raw total. Pace stays denominated per STANDARD session, which is what
+# keeps it commensurate with the declared weekly budget it is compared against
+# (§24.6 counts budgeted sessions, not elapsed minutes).
 minutes = 25
+# Offered on the start control. Custom durations are always allowed; these are
+# the one-tap paths, not a whitelist.
+presets = [15, 25, 50, 90]
+# PLACEHOLDER. Below this, dividing by (actual_minutes / minutes) multiplies a
+# tiny sample up into a wild rate: four minutes and two pages implies 12.5
+# pages/session on almost no evidence. Such sessions are retained and excluded
+# from pace, exactly as interrupted ones are.
+min_session_minutes = 5
 
 [pace]
 # §24.3 shrinkage estimator: pace_hat = (kappa*prior + n*mean) / (kappa + n)
@@ -40,11 +58,20 @@ movement_pct = 5.0
 [planning]
 # §25.1 weekly ranking weights. Pace deficit is deliberately absent (D6);
 # feasibility pressure replaces it.
-w_feasibility = 0.30
-w_urgency = 0.20
-w_stakes = 0.20
-w_unblocking = 0.10
-w_neglect = 0.10
+# The five original positive weights, rescaled by 0.90 to make room for
+# w_density. Their RATIOS to each other are unchanged, so the relative
+# importance §25.1 states is preserved; only the share left for the new term is
+# taken out. sum(contributions) == score stays exact, which is what makes a
+# stored score_breakdown self-checking.
+w_feasibility = 0.27
+w_urgency = 0.18
+w_stakes = 0.18
+w_unblocking = 0.09
+w_neglect = 0.09
+# Work whose primary unit understates its cost. Without this, a trackable full
+# of dense pages is ranked on a page count that does not reflect what it takes,
+# and it loses every week to work that is merely easier to count.
+w_density = 0.10
 w_effort = 0.10
 
 # Normalization horizons for the score terms above. All terms map to [0, 1].
@@ -82,13 +109,32 @@ max_questions_per_session = 7
 # Verified working against the live API. Note gemini-2.5-flash is *listed* by
 # models.list() but 404s on generateContent, so the listing is not proof.
 model = "gemini-3.5-flash"
-# Free-tier congestion is routine: probing five models found three returning
-# 503 simultaneously. The chain is tried in order after retries are exhausted.
-fallback_models = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
+# Congestion is routine and is NOT a free-tier problem -- probing this chain on
+# the prepaid key found gemini-3.7-flash and gemini-flash-latest returning 503
+# on two passes minutes apart. Both were removed: a model that is reliably down
+# is not a fallback, it is a delay on the way to the one that works.
+# The chain is tried in order after retries are exhausted.
+fallback_models = ["gemini-3.6-flash"]
 retry_attempts = 3
 retry_base_seconds = 2
+# The ceiling on ONE user-visible answer, across every retry, model fallback and
+# tool-use turn it takes. Without this the limits multiply: 8 turns x 4 models x
+# 3 attempts is 96 requests, and the assistant was observed spending ~11 minutes
+# inside that matrix on a single question.
+request_budget_seconds = 90
 # Ingestion is one bounded pass over a brain dump; the assistant may run longer.
 max_tokens = 16000
+# Reserved out of max_tokens for reasoning, so it cannot consume the whole
+# budget and finish with MAX_TOKENS and an empty candidate ("the model returned
+# no parsed turn"). Observed usage is 700-1500 on a first turn; 4000 leaves
+# 12000 for the reply, which is far more than a turn has ever needed.
+thinking_budget = 4000
+# Thinking allowed on a turn that only has to choose a tool. Measured: one such
+# turn spent 908 thinking tokens and 3.9s to emit a single 13-token function
+# call -- a third of the answer's wall time spent deciding which lookup to run.
+# Picking a tool is not the part that needs reasoning; the answer turn keeps the
+# full budget above.
+tool_selection_thinking_budget = 256
 # §26 asks for a re-prompt on malformed output. Structured outputs make that
 # nearly unreachable, but the retry stays as a backstop for transport failures.
 ingest_max_retries = 2
@@ -117,3 +163,36 @@ staleness_cap_days = 14
 [rebaseline]
 # §25.2/§25.4. "Material drift" is not given a number in vision.md. PLACEHOLDER.
 material_drift_sessions = 2.0
+
+[productivity]
+# The second measurement axis (see the migration b7e2a4c93f18 docstring).
+# `unit` measures progress because its denominator is knowable; the secondary
+# count measures work, and needs no denominator at all.
+#
+# Every value here is a PLACEHOLDER.
+#
+# Sessions needed before the two-predictor fit is attempted. Two parameters from
+# five points is not an estimate, it is a line drawn through noise.
+min_sessions_for_fit = 6
+# Below this the fit does not explain the data and is reported UNAVAILABLE
+# rather than as a weaker number. A wrong cost-per-problem is worse than none:
+# it would flow into the productivity index and out into weekly ranking.
+min_r_squared = 0.3
+# Tukey fence multiplier for calling a session's PROGRESS an outlier.
+outlier_fence = 1.5
+# The band of productivity index that counts as an ordinary session. An outlier
+# on pages whose index lands inside this was dense, not slow -- which is the
+# distinction the whole axis exists to draw.
+normal_index_low = 0.8
+normal_index_high = 1.25
+# How much tighter the secondary series must be, in relative IQR, before the
+# system will propose switching to it. Below this the two units measure the work
+# about equally well and churning the unit buys nothing.
+stability_margin = 0.25
+# Index at which the weekly-ranking term saturates. 1.0 means a trackable whose
+# work costs twice what its page count suggests contributes the full weight.
+density_reference = 1.0
+# Ceiling on density-based suppression of a rebaseline prompt (§17). Past this
+# much drift the work is behind regardless of why, and continuing to hold the
+# prompt would be the silent drift the whole section exists to prevent.
+suppression_max_drift_sessions = 4.0

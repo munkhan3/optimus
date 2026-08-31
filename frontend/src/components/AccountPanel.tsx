@@ -70,7 +70,7 @@ export function AccountPanel({
         {account ? (
           <div className="mt-5 rounded-control bg-raised px-4 py-3">
             <div className="text-body-sm font-medium text-ink">{account.email}</div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+            <div className="mt-1 font-mono text-micro uppercase tracking-label text-faint">
               Account #{account.id}
             </div>
           </div>
@@ -86,7 +86,7 @@ export function AccountPanel({
 
         <div className="mt-7 border-t border-line pt-5">
           <SectionLabel>Delete Account</SectionLabel>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          <p className="mt-2 text-caption leading-relaxed text-muted">
             This permanently removes your goals, plans, sessions, and account. Enter your password to confirm.
           </p>
           <Field

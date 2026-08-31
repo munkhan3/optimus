@@ -91,7 +91,7 @@ export function Tag({
   } as const;
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.12em] ${tones[tone]}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-micro font-medium uppercase tracking-label ${tones[tone]}`}
     >
       {children}
     </span>
@@ -118,7 +118,7 @@ export function Stat({
       {/* The hint carries provenance ("your estimate — no sessions yet"), so it
           wraps rather than truncating: it is what tells the user how much to
           trust the number above it (P3). */}
-      {hint && <div className="mt-1 text-[11px] leading-tight text-faint">{hint}</div>}
+      {hint && <div className="mt-1 text-footnote leading-tight text-faint">{hint}</div>}
     </div>
   );
 }
@@ -155,13 +155,13 @@ export function Button({
   variant = "primary",
   disabled,
   pending,
-  arrow = variant === "primary",
+  arrow = variant === "primary" || variant === "inverted",
   className = "",
   type = "button",
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "ghost" | "danger";
+  variant?: "primary" | "inverted" | "ghost" | "danger";
   disabled?: boolean;
   /** In-flight. Blocks the click as well as showing it: without this every async
       button in the app stays live while its request runs, and a double tap on
@@ -173,9 +173,16 @@ export function Button({
 }) {
   /* design.md: white fill, black text, the highest-contrast pair in the system
      and the only primary action. Ghost is a hairline outline, not a filled
-     surface, so exactly one thing on a screen ever reads as the action. */
+     surface, so exactly one thing on a screen ever reads as the action.
+
+     `inverted` is the primary on inverted ground. InvertedCard puts a Silver
+     surface under the action, where white-on-black has nothing to say, so the
+     pair flips. It exists because the alternative was what Today was doing:
+     hand-rolling the button and drifting a padding step away from every other
+     one in the app. */
   const styles = {
     primary: "bg-pure text-void hover:bg-ink active:brightness-90",
+    inverted: "bg-void text-pure hover:opacity-90 active:opacity-80",
     ghost: "border border-line bg-transparent text-ink hover:bg-raised",
     danger: "border border-bad/40 bg-transparent text-bad hover:bg-bad/12",
   } as const;
@@ -234,6 +241,50 @@ export function Field({
 }
 
 /**
+ * Multi-line input. `Field` is single-line, and the two textareas that existed
+ * before this were hand-rolled with the classes copied, which is how the intake
+ * composer and the session note came to disagree about their own padding.
+ *
+ * `tone` mirrors the split SessionEnd already uses: "dark" against the docked
+ * bar, "bare" against the fullscreen overlay, which paints its own ground.
+ */
+export function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+  tone = "dark",
+  autoFocus,
+  className = "",
+}: {
+  label?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+  tone?: "dark" | "bare";
+  autoFocus?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={`block ${className}`}>
+      {label && <span className="section-label">{label}</span>}
+      <textarea
+        value={value}
+        rows={rows}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`mt-1.5 w-full resize-none rounded-control border border-line px-3.5 py-3 text-body-sm text-ink outline-none placeholder:text-faint focus:border-muted ${
+          tone === "dark" ? "bg-abyss" : "bg-transparent"
+        }`}
+      />
+    </label>
+  );
+}
+
+/**
  * One treatment for anything that went wrong or needs attention.
  *
  * There were five of these inline before, at four different paddings and three
@@ -257,7 +308,7 @@ export function Banner({
     <div className={`rounded-card px-4 py-3 ${tones[tone]}`} role="alert">
       {title && <div className="text-body-sm font-medium">{title}</div>}
       {children && (
-        <div className={`text-[13px] leading-relaxed text-muted ${title ? "mt-1.5" : ""}`}>
+        <div className={`text-caption leading-relaxed text-muted ${title ? "mt-1.5" : ""}`}>
           {children}
         </div>
       )}
@@ -302,7 +353,7 @@ export function Empty({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="rounded-card border border-dashed border-line px-4 py-12 text-center">
       <div className="text-body-sm font-medium text-ink">{title}</div>
-      {hint && <div className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-faint">{hint}</div>}
+      {hint && <div className="mx-auto mt-2 max-w-sm text-caption leading-relaxed text-faint">{hint}</div>}
     </div>
   );
 }

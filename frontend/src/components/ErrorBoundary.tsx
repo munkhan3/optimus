@@ -29,16 +29,16 @@ export class ErrorBoundary extends Component<
         <div className="text-body-sm font-medium text-bad">
           {this.props.label ?? "This view"} hit an error
         </div>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        <p className="mt-2 text-caption leading-relaxed text-muted">
           The rest of the app still works — switch tabs and come back. If it keeps
           happening the message below is what to report.
         </p>
-        <pre className="mt-3 overflow-x-auto rounded-control bg-abyss p-3 font-mono text-[11px] text-faint">
+        <pre className="mt-3 overflow-x-auto rounded-control bg-abyss p-3 font-mono text-footnote text-faint">
           {this.state.error.message}
         </pre>
         <button
           onClick={() => this.setState({ error: null })}
-          className="mt-3 text-[13px] font-medium text-ink underline underline-offset-4"
+          className="mt-3 text-caption font-medium text-ink underline underline-offset-4"
         >
           Try Again
         </button>

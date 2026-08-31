@@ -89,7 +89,7 @@ function Chart({ weeks }: { weeks: CapacityWeek[] }) {
           </Group>
         </svg>
       </div>
-      <div className="flex flex-wrap gap-3 font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+      <div className="flex flex-wrap gap-3 font-mono text-micro uppercase tracking-label text-faint">
         {series.map((s) => (
           <span key={s.key} className="flex items-center gap-1.5">
             <span className="inline-block size-2 rounded-[2px]" style={{ background: s.color }} />

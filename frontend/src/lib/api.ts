@@ -69,6 +69,66 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+/**
+ * POST and read a Server-Sent Events response, yielding each parsed event.
+ *
+ * Not EventSource: that is GET-only and cannot carry the bearer header, and the
+ * assistant needs a request body anyway.
+ *
+ * Streaming is what keeps long answers alive. A browser's request timeout
+ * measures the gap between bytes rather than total duration, so a loop that
+ * reports progress can run for minutes on a connection that would be killed at
+ * 60 seconds of silence.
+ */
+export async function* stream<T>(path: string, body?: unknown): AsyncGenerator<T> {
+  const token = getToken();
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  if (!response.ok || !response.body) {
+    let detail = response.statusText;
+    try {
+      const parsed = await response.json();
+      detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+    } catch {
+      /* keep statusText */
+    }
+    throw new ApiError(response.status, detail);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Frames are separated by a blank line. The last element is a partial
+    // frame and stays in the buffer until its terminator arrives.
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      const data = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("");
+      // Comment frames (": keepalive") have no data line. They exist purely to
+      // put bytes on the wire, so there is nothing to yield.
+      if (data) yield JSON.parse(data) as T;
+    }
+  }
+}
+
 export const api = {
   get: <T,>(path: string) => request<T>(path),
   post: <T,>(path: string, body?: unknown) =>

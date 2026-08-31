@@ -90,7 +90,7 @@ export function FeasibilityMargin({ data }: WidgetProps) {
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-body-sm text-ink">{row.label}</span>
                     <span
-                      className="shrink-0 font-mono text-[11px] tabular-nums"
+                      className="shrink-0 font-mono text-footnote tabular-nums"
                       style={{ color: toneColor[tone] }}
                     >
                       {settled(row)
@@ -116,7 +116,7 @@ export function FeasibilityMargin({ data }: WidgetProps) {
                       />
                     )}
                   </div>
-                  <div className="text-[11px] text-faint">
+                  <div className="text-footnote text-faint">
                     {row.feasibility.reason || row.context}
                   </div>
                 </div>

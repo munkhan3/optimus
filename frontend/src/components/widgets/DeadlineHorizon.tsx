@@ -55,11 +55,11 @@ export function DeadlineHorizon({ data }: WidgetProps) {
                 <div key={row.key} className="flex items-baseline justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-body-sm text-ink">{row.title}</div>
-                    <div className="truncate text-[11px] text-faint">{row.context}</div>
+                    <div className="truncate text-footnote text-faint">{row.context}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div
-                      className="font-mono text-[11px] tabular-nums"
+                      className="font-mono text-footnote tabular-nums"
                       style={{ color: toneColor[tone] }}
                     >
                       {/* A recurring commitment has a deadline every period, not
@@ -67,7 +67,7 @@ export function DeadlineHorizon({ data }: WidgetProps) {
                           opposite of the truth about it. */}
                       {row.recurring ? row.timing : dateShort(row.date)}
                     </div>
-                    <div className="text-[11px] text-faint">
+                    <div className="text-footnote text-faint">
                       {row.feasibility.feasible === false
                         ? "Does Not Fit"
                         : days === null

@@ -25,7 +25,12 @@ from optimus.metrics.feasibility import (
     projection,
 )
 from optimus.metrics.health import goal_health
-from optimus.metrics.pace import empirical_pace, required_pace
+from optimus.metrics.pace import empirical_pace, pace_scores, required_pace
+from optimus.metrics.productivity import (
+    density_fit,
+    series_stability,
+    session_productivity,
+)
 from optimus.metrics.progress import percent_complete, remaining_units
 from optimus.metrics.stall import detect_stall
 from optimus.metrics.types import PaceMode
@@ -35,7 +40,7 @@ from ..settings import get_metrics_config
 from . import loader
 
 
-def _serialize(obj: Any) -> Any:
+def serialize(obj: Any) -> Any:
     """Flatten engine dataclasses to JSON-ready primitives.
 
     Dates become ISO strings here rather than at each call site, so the HTTP
@@ -48,11 +53,11 @@ def _serialize(obj: Any) -> Any:
     if isinstance(obj, (date, datetime)):
         return obj.isoformat()
     if hasattr(obj, "__dataclass_fields__"):
-        return {k: _serialize(v) for k, v in asdict(obj).items()}
+        return {k: serialize(v) for k, v in asdict(obj).items()}
     if isinstance(obj, dict):
-        return {k: _serialize(v) for k, v in obj.items()}
+        return {k: serialize(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_serialize(v) for v in obj]
+        return [serialize(v) for v in obj]
     if hasattr(obj, "value"):  # Enum
         return obj.value
     return obj
@@ -110,6 +115,24 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
     ) or 0
     proj = projection(remaining, pace, per_week, today, deadline)
 
+    # The pace score compares this trackable against the pooled rate, so it needs
+    # the unpooled series as well. Computed after `req` because the track score
+    # divides by it.
+    own = loader.trackable_sessions(db, trackable.id or 0)
+    own_pace = empirical_pace(own, trackable.prior_pace, config)
+    scores = pace_scores(own_pace, pace, req)
+
+    # The second axis. Fit on THIS trackable's sessions only -- a problem in one
+    # book is not a problem in another, so pooling would average away the only
+    # quantity of interest. `latest` is the most recent finished session, which
+    # is what the end-of-session prompt and the weekly review both ask about.
+    fit = density_fit(own, config)
+    latest = own[-1] if own else None
+    productivity = (
+        session_productivity(latest, own, fit, config) if latest is not None else None
+    )
+    stability = series_stability(own, config)
+
     stale = loader.days_since_last_session(db, trackable.id or 0, today)
     health = goal_health(
         feas,
@@ -127,15 +150,24 @@ def trackable_view(db: Session, trackable: Trackable, today: date) -> dict[str, 
         "status": trackable.status,
         "exploratory": trackable.exploratory,
         "total_units_source": trackable.total_units_source,
-        "progress": _serialize(progress),
-        "pace": _serialize(pace),
-        "required_pace": _serialize(req),
-        "drift": _serialize(current_drift),
-        "drift_vs_original": _serialize(original_drift),
-        "calibration": _serialize(calibration(pooled, config)),
-        "feasibility": _serialize(feas),
-        "projection": _serialize(proj),
-        "health": _serialize(health),
+        "progress": serialize(progress),
+        "pace": serialize(pace),
+        "trackable_pace": serialize(own_pace),
+        "pace_scores": serialize(scores),
+        "secondary_unit": trackable.secondary_unit,
+        "secondary_total_units": trackable.secondary_total_units,
+        "secondary_total_units_source": trackable.secondary_total_units_source,
+        "secondary_completed_units": trackable.secondary_completed_units,
+        "density_fit": serialize(fit),
+        "productivity": serialize(productivity),
+        "series_stability": serialize(stability),
+        "required_pace": serialize(req),
+        "drift": serialize(current_drift),
+        "drift_vs_original": serialize(original_drift),
+        "calibration": serialize(calibration(pooled, config)),
+        "feasibility": serialize(feas),
+        "projection": serialize(proj),
+        "health": serialize(health),
         "days_since_last_session": stale,
         "sessions_used_this_week": used,
         # Present so the UI can say which window a recurring number describes.
@@ -192,10 +224,10 @@ def milestone_view(db: Session, milestone: Milestone, today: date) -> dict[str, 
         "exploratory": milestone.exploratory,
         "planned_sessions": planned,
         "sessions_used": used,
-        "feasibility": _serialize(feas),
-        "health": _serialize(health),
+        "feasibility": serialize(feas),
+        "health": serialize(health),
         # D12: the slider's ONLY downstream use. Never a term in any number above.
-        "stall": _serialize(stall),
+        "stall": serialize(stall),
     }
 
 

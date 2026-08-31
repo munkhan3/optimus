@@ -51,13 +51,13 @@ export function RebaselineHistory({ data }: WidgetProps) {
                 <div key={row.key} className="space-y-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-body-sm text-ink">{row.title}</span>
-                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
+                    <span className="shrink-0 font-mono text-micro uppercase tracking-label text-faint">
                       v{current.version}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 rounded-control bg-abyss p-2 text-[11px]">
+                  <div className="grid grid-cols-2 gap-2 rounded-control bg-abyss p-2 text-footnote">
                     <div>
-                      <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+                      <div className="font-mono text-micro uppercase tracking-label text-faint">
                         Originally
                       </div>
                       <div className="text-muted">
@@ -66,7 +66,7 @@ export function RebaselineHistory({ data }: WidgetProps) {
                       </div>
                     </div>
                     <div>
-                      <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+                      <div className="font-mono text-micro uppercase tracking-label text-faint">
                         Now
                       </div>
                       <div className={moved ? "text-warn" : "text-muted"}>
@@ -76,14 +76,14 @@ export function RebaselineHistory({ data }: WidgetProps) {
                     </div>
                   </div>
                   {current.resolution && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-footnote text-faint">
                       <Tag tone={current.resolution === "move_deadline" ? "warn" : "neutral"}>
                         {RESOLUTION_LABEL[current.resolution] ?? current.resolution}
                       </Tag>
                       {current.rationale && <span className="min-w-0">{current.rationale}</span>}
                     </div>
                   )}
-                  {path && <div className="truncate text-[11px] text-faint">{path}</div>}
+                  {path && <div className="truncate text-footnote text-faint">{path}</div>}
                 </div>
               );
             })}

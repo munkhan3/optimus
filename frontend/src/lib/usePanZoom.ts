@@ -31,20 +31,33 @@ const MAX_K = 3;
 export function usePanZoom(
   initial: View = { x: 0, y: 0, k: 1 },
   clamp?: (v: View) => View,
+  floor?: () => number,
 ) {
   const [view, setViewRaw] = useState<View>(initial);
-  /* Held in a ref rather than closed over: the clamp depends on the layout and
-     the frame size, both of which change, and re-creating every handler each
-     time they did would tear down the pointer capture mid-drag. */
+  /* Held in refs rather than closed over: both depend on the layout and the
+     frame size, both of which change, and re-creating every handler each time
+     they did would tear down the pointer capture mid-drag. */
   const clampRef = useRef(clamp);
+  const floorRef = useRef(floor);
   useEffect(() => {
     clampRef.current = clamp;
-  }, [clamp]);
+    floorRef.current = floor;
+  }, [clamp, floor]);
+
+  /**
+   * How far out this view is allowed to go.
+   *
+   * A caller that fits its content can pin the floor to that fit, which stops
+   * the view zooming out into ground with nothing on it. Empty space is not a
+   * neutral default -- it reads as the map having run out.
+   */
+  const minK = () => Math.max(MIN_K, floorRef.current?.() ?? MIN_K);
 
   const setView = useCallback((next: View | ((v: View) => View)) => {
     setViewRaw((v) => {
       const proposed = typeof next === "function" ? next(v) : next;
-      return clampRef.current ? clampRef.current(proposed) : proposed;
+      const bounded = { ...proposed, k: Math.min(MAX_K, Math.max(minK(), proposed.k)) };
+      return clampRef.current ? clampRef.current(bounded) : bounded;
     });
   }, []);
 
@@ -63,7 +76,7 @@ export function usePanZoom(
 
   const zoomAt = useCallback((factor: number, sx: number, sy: number) => {
     setView((v) => {
-      const k = Math.min(MAX_K, Math.max(MIN_K, v.k * factor));
+      const k = Math.min(MAX_K, Math.max(minK(), v.k * factor));
       // Hold the graph point under (sx, sy) still across the scale change.
       const gx = (sx - v.x) / v.k;
       const gy = (sy - v.y) / v.k;
@@ -71,14 +84,52 @@ export function usePanZoom(
     });
   }, [setView]);
 
+  /**
+   * Wheel gestures, which on a trackpad are two different gestures.
+   *
+   * A pinch arrives as a wheel event with `ctrlKey` set. That is not a
+   * modifier the user is holding -- it is the convention every browser uses to
+   * mark a pinch, and it is the only thing distinguishing one from a
+   * two-finger slide. Reading deltaY without checking it makes every scroll a
+   * zoom, which is what this used to do.
+   *
+   * So: pinch zooms, slide scrolls, and ctrl/⌘ with a real wheel zooms too,
+   * since a mouse has no pinch to offer.
+   */
   const onWheel = useCallback(
-    (e: React.WheelEvent<SVGSVGElement>) => {
+    (e: WheelEvent) => {
+      // Attached non-passively below precisely so this can be honoured; React's
+      // own onWheel is passive, so the page would scroll along with the graph.
       e.preventDefault();
-      const box = e.currentTarget.getBoundingClientRect();
-      zoomAt(1 - e.deltaY * 0.0015, e.clientX - box.left, e.clientY - box.top);
+      const box = (e.currentTarget as Element).getBoundingClientRect();
+
+      if (e.ctrlKey || e.metaKey) {
+        zoomAt(1 - e.deltaY * 0.0015, e.clientX - box.left, e.clientY - box.top);
+        return;
+      }
+
+      // deltaMode is pixels for a trackpad but lines or pages for some mice.
+      const step = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? box.height : 1;
+      setView((v) => ({
+        ...v,
+        x: v.x - e.deltaX * step,
+        y: v.y - e.deltaY * step,
+      }));
     },
-    [zoomAt],
+    [zoomAt, setView],
   );
+
+  /* Held in state rather than a ref so that mounting the element re-runs the
+     effect below. The svg lives inside a conditional -- an empty graph renders
+     a message instead -- and a plain ref would leave the listener unattached
+     for anyone whose first load had nothing to draw. `setWheelEl` is stable, so
+     it doubles as the callback ref itself. */
+  const [wheelEl, setWheelEl] = useState<SVGSVGElement | null>(null);
+  useEffect(() => {
+    if (!wheelEl) return;
+    wheelEl.addEventListener("wheel", onWheel, { passive: false });
+    return () => wheelEl.removeEventListener("wheel", onWheel);
+  }, [wheelEl, onWheel]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
@@ -113,7 +164,7 @@ export function usePanZoom(
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const start = pinchFrom.current;
       if (start.dist > 0) {
-        const k = Math.min(MAX_K, Math.max(MIN_K, start.k * (dist / start.dist)));
+        const k = Math.min(MAX_K, Math.max(minK(), start.k * (dist / start.dist)));
         setView((v) => {
           const gx = (start.cx - v.x) / v.k;
           const gy = (start.cy - v.y) / v.k;
@@ -145,8 +196,9 @@ export function usePanZoom(
     toGraph,
     zoomAt,
     isPanning,
+    /** Callback ref for the element wheel gestures are read from. */
+    wheelRef: setWheelEl,
     handlers: {
-      onWheel,
       onPointerDown,
       onPointerMove,
       onPointerUp: endPointer,

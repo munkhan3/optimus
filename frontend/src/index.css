@@ -31,6 +31,21 @@
   --text-mono-label: 11px;
   --text-mono-label--line-height: 1.6;
   --text-mono-label--letter-spacing: 0.182em;
+  /* Three steps below body-sm, because the product needed them and had been
+     spelling them as one-off pixel values instead: 111 arbitrary text-[Npx] at
+     five sizes, against 101 uses of the scale. Nine and ten were a distinction
+     nothing was making on purpose, and twelve and thirteen were the same
+     annotation at two sizes, so each pair collapses to one step.
+
+     These carry no tracking, which is what separates them from mono-label
+     above: that is the LABEL voice (uppercase, widely tracked, and already
+     wrapped up in .section-label), while these are simply small text. */
+  --text-caption: 13px;
+  --text-caption--line-height: 1.45;
+  --text-footnote: 11px;
+  --text-footnote--line-height: 1.45;
+  --text-micro: 10px;
+  --text-micro--line-height: 1.4;
   --text-body-sm: 14px;
   --text-body-sm--line-height: 1.5;
   --text-body: 16px;
@@ -41,6 +56,12 @@
   --text-heading--line-height: 1;
   --text-display: 38px;
   --text-display--line-height: 0.9;
+  /* The countdown, and only the countdown. A full-screen timer is not a
+     heading that happens to be large -- it is the single thing on the screen,
+     read from across a room, and it scales with the viewport because a phone
+     and a 27" display are not asking for the same number of pixels. */
+  --text-timer: clamp(72px, 20vw, 168px);
+  --text-timer--line-height: 1;
 
   /* -------------------------------------------------------------- surfaces */
   /* Obsidian -> card -> Graphite -> Steel. The 0x1a card step is interpolated,
@@ -79,6 +100,11 @@
   --color-good: oklch(0.78 0.155 155);
   --color-warn: oklch(0.80 0.140 75);
   --color-bad: oklch(0.68 0.170 20);
+
+  /* One tracking for the mono voice at any size. It had been written inline at
+     0.08em, 0.1em, 0.12em and 0.16em on sites that are all the same uppercase
+     annotation -- four values for one idea. */
+  --tracking-label: 0.12em;
 
   /* -------------------------------------------------------------- geometry */
   --radius-control: 8px;
@@ -189,4 +215,17 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Number inputs narrow enough that the native stepper collides with the text.
+   Not applied globally: a wide field in Plan has room for it and the affordance
+   is worth keeping there. */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }

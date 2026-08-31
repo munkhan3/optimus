@@ -70,6 +70,35 @@ export function elapsed(fromIso: string): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Time left in a session, and then time spent past it.
+ *
+ * Derived from started_at on every call rather than decremented, for the same
+ * reason `elapsed` is: a counter that ticks drifts, and this one has to agree
+ * with a server that computes the duration from two timestamps.
+ *
+ * Past zero it keeps going and says so. The session did not fail to end -- the
+ * user chose not to stop, and that choice is the measurement.
+ */
+export function countdown(
+  fromIso: string,
+  plannedMinutes: number,
+): { text: string; seconds: number; overtime: boolean } {
+  const gone = Math.floor((Date.now() - new Date(fromIso).getTime()) / 1000);
+  const left = plannedMinutes * 60 - gone;
+  const overtime = left < 0;
+  const magnitude = Math.abs(left);
+  const m = Math.floor(magnitude / 60);
+  const s = magnitude % 60;
+  return {
+    text: `${overtime ? "+" : ""}${m}:${String(s).padStart(2, "0")}`,
+    // Negative once past the boundary, so callers can compare rather than
+    // re-deriving which side of it they are on.
+    seconds: left,
+    overtime,
+  };
+}
+
 export function relativeDays(days: number | null): string {
   if (days === null) return "Never";
   if (days === 0) return "Today";

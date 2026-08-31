@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { api } from "../lib/api";
 import type { TrackableView } from "../lib/types";
 import {
@@ -11,6 +13,8 @@ import {
   relativeDays,
 } from "../lib/format";
 import { BigStat, Button, Card, Empty, ProgressBar, Stat, Tag } from "../components/Primitives";
+import { Calculated } from "../components/Calculated";
+import { SessionDuration, useSessionDefaults } from "../components/SessionDuration";
 
 /**
  * The M1 screen: trackables with progress, pace, interval, drift, projection.
@@ -58,9 +62,14 @@ function TrackableCard({
   const infeasible = t.feasibility.feasible === false;
   const undetermined = t.feasibility.feasible === null;
   const interval = intervalText(t.pace, t.unit);
+  const { minutes: defaultMinutes } = useSessionDefaults();
+  const [minutes, setMinutes] = useState(defaultMinutes);
 
   async function start() {
-    await api.post("/api/sessions/start", { trackable_id: t.trackable_id });
+    await api.post("/api/sessions/start", {
+      trackable_id: t.trackable_id,
+      planned_minutes: minutes,
+    });
     onStarted();
   }
 
@@ -77,9 +86,18 @@ function TrackableCard({
             {infeasible && <Tag tone="bad">Infeasible</Tag>}
           </div>
         </div>
+        {/* `busy` already folds in "a session is open" (App.tsx passes
+            busy || !!session), which is what Today and Tree spell as
+            `sessionOpen`. Same rule, two names. */}
         <Button onClick={start} disabled={busy} className="shrink-0">
           Start
         </Button>
+      </div>
+
+      {/* §36.1 reversed. Prefilled, so ignoring it entirely still leaves
+          starting a one-tap action (§23.1). */}
+      <div className="mt-3">
+        <SessionDuration value={minutes} onChange={setMinutes} disabled={busy} />
       </div>
 
       <div className="mt-4">
@@ -130,22 +148,62 @@ function TrackableCard({
         />
       </div>
 
+      {/* Two dimensionless readings, never collapsed. D6: a goal at 0.7 pace may
+          simply have had an aggressive plan, so "how fast do I work" and "how far
+          off-pace am I" are answered separately or not at all. */}
+      <div className="mt-4 grid grid-cols-2 gap-4 border-t border-line pt-4">
+        <div>
+          <Stat
+            label="Pace Score"
+            value={t.pace_scores.pace == null ? "—" : num(t.pace_scores.pace, 2)}
+            hint="vs your usual for this work"
+            tone={
+              t.pace_scores.pace == null
+                ? undefined
+                : t.pace_scores.pace >= 0.9
+                  ? "good"
+                  : t.pace_scores.pace >= 0.7
+                    ? "warn"
+                    : "bad"
+            }
+          />
+          <Calculated calculation={t.pace_scores.pace_calculation} />
+        </div>
+        <div>
+          <Stat
+            label="On Track"
+            value={t.pace_scores.track == null ? "—" : num(t.pace_scores.track, 2)}
+            hint="vs what the plan requires"
+            tone={
+              t.pace_scores.track == null
+                ? undefined
+                : t.pace_scores.track >= 1
+                  ? "good"
+                  : t.pace_scores.track >= 0.8
+                    ? "warn"
+                    : "bad"
+            }
+          />
+          <Calculated calculation={t.pace_scores.track_calculation} />
+        </div>
+      </div>
+
       {/* D8: the interval is displayed and gates exactly one decision --
           whether to rebaseline. It is not propagated into any arithmetic. */}
       {interval && (
-        <div className="mt-4 text-[13px] text-faint">
+        <div className="mt-4 text-caption text-faint">
           Typical range {interval}
           {t.pace.interval?.provisional && " · provisional, too few sessions to trust"}
         </div>
       )}
 
       {infeasible && (
-        <div className="mt-4 rounded-card bg-bad/8 px-4 py-3 text-[13px] leading-relaxed text-bad">
+        <div className="mt-4 rounded-card bg-bad/8 px-4 py-3 text-caption leading-relaxed text-bad">
           {t.feasibility.reason}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-faint">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-footnote text-faint">
         <span>last worked {relativeDays(t.days_since_last_session)}</span>
         <span>
           {t.sessions_used_this_week} session{t.sessions_used_this_week === 1 ? "" : "s"} this week

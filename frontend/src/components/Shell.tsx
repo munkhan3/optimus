@@ -4,12 +4,15 @@ import {
   IconDash,
   IconPlan,
   IconRoadmap,
+  IconTimer,
   IconToday,
   IconTree,
   IconWeek,
   IconWork,
   Mark,
 } from "./Icons";
+import type { TrackableView } from "../lib/types";
+import { StartSession } from "./StartSession";
 
 export type Tab =
   | "dash"
@@ -60,10 +63,20 @@ export function Shell({
   sessionOpen = false,
   bleed = false,
   onAccount,
+  onOpenSessionLog,
+  trackables = [],
+  onSessionStarted,
+  canStartSession = false,
   children,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
+  onOpenSessionLog?: () => void;
+  /** What a new session could be attached to. */
+  trackables?: TrackableView[];
+  onSessionStarted?: () => void;
+  /** False while a session is already running, when SessionBar is the timer. */
+  canStartSession?: boolean;
   /** Reserves room at the bottom for the session bar, which docks above the
       mobile nav rather than over it. */
   sessionOpen?: boolean;
@@ -119,6 +132,23 @@ export function Shell({
           ))}
         </nav>
 
+        {/* Starting work is the one thing the rail should make trivially
+            reachable from every view, so it sits directly above the assistant
+            at the foot of the rail. It opens UPWARD: this is the bottom of the
+            screen and a downward panel would be clipped. */}
+        {canStartSession && onSessionStarted && (
+          <StartSession
+            trackables={trackables}
+            onStarted={onSessionStarted}
+            className="mb-2"
+          >
+            <span className="flex items-center gap-2.5 rounded-control border border-line bg-raised px-3 py-3 text-body-sm text-ink transition duration-200 ease-out hover:bg-surface">
+              <IconTimer className="size-4 shrink-0" />
+              Start Session
+            </span>
+          </StartSession>
+        )}
+
         {/* Origin pins its assistant to the bottom of the rail, out of the way
             until wanted. Same here -- it is read-only, so it is never the
             primary action. */}
@@ -134,6 +164,16 @@ export function Shell({
           <IconAsk className="size-4 shrink-0" />
           Ask Anything
         </button>
+
+        {/* Session log button in the rail so the log is accessible from the UI */}
+        {onOpenSessionLog && (
+          <button
+            onClick={onOpenSessionLog}
+            className="mt-3 flex items-center gap-2.5 rounded-control border px-3 py-3 text-body-sm transition duration-200 ease-out text-muted hover:bg-surface hover:text-ink"
+          >
+            Session Log
+          </button>
+        )}
       </aside>
 
       {/* --------------------------------------------------------- content */}
@@ -146,7 +186,7 @@ export function Shell({
               </span>
               <div className="min-w-0">
                 <h1 className="display truncate text-subheading lg:text-heading">{title}</h1>
-                <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
+                <div className="mt-0.5 font-mono text-micro uppercase tracking-label text-faint">
                   {new Date().toLocaleDateString(undefined, {
                     weekday: "long",
                     month: "short",
@@ -155,10 +195,24 @@ export function Shell({
                 </div>
               </div>
             </div>
+            {/* The rail is hidden below lg, so the header carries it there --
+                the only chrome that persists across every view on a phone. */}
+            {canStartSession && onSessionStarted && (
+              <StartSession
+                trackables={trackables}
+                onStarted={onSessionStarted}
+                className="lg:hidden"
+              >
+                <span className="flex items-center gap-1.5 rounded-control border border-line bg-raised px-2.5 py-1.5 text-footnote font-medium text-ink">
+                  <IconTimer className="size-3.5 shrink-0" />
+                  Start
+                </span>
+              </StartSession>
+            )}
             {onAccount && (
               <button
                 onClick={onAccount}
-                className="rounded-control px-2 py-1 text-[11px] font-medium text-faint transition hover:bg-surface hover:text-ink"
+                className="rounded-control px-2 py-1 text-footnote font-medium text-faint transition hover:bg-surface hover:text-ink"
               >
                 Account
               </button>
@@ -177,9 +231,15 @@ export function Shell({
                tab bar is hidden there, and reserving for it left a dead strip
                under every view -- most visibly under the map, which is sized
                to the space it is given and so simply stopped short of the
-               bottom of the screen. */
+               bottom of the screen.
+
+               Raised for the second axis: the confirm state now also carries an
+               optional count and a note, and the reflection panel that follows
+               an unusual session is taller still. Under-reserving here does not
+               clip the bar -- it is fixed -- it hides the bottom of whatever
+               view is behind it. */
             sessionOpen
-              ? "pb-[calc(210px+env(safe-area-inset-bottom))] lg:pb-[150px]"
+              ? "pb-[calc(330px+env(safe-area-inset-bottom))] lg:pb-[270px]"
               : "pb-[calc(var(--mobile-nav)+env(safe-area-inset-bottom))] lg:pb-0",
           ].join(" ")}
           style={{ "--mobile-nav": `${MOBILE_NAV_H}px` } as CSSProperties}
@@ -209,7 +269,7 @@ export function Shell({
                   onClick={() => setTab(id)}
                   aria-current={tab === id ? "page" : undefined}
                   aria-label={label}
-                  className={`relative flex min-w-[68px] flex-1 shrink-0 flex-col items-center gap-1 py-3 text-[10px] font-medium transition duration-200 ease-out ${
+                  className={`relative flex min-w-[68px] flex-1 shrink-0 flex-col items-center gap-1 py-3 text-micro font-medium transition duration-200 ease-out ${
                     tab === id ? "text-ink" : "text-faint"
                   }`}
                 >

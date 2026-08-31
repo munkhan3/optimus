@@ -41,7 +41,7 @@ export function GoalHealth({ data }: WidgetProps) {
               <div key={t.trackable_id} className="space-y-1.5">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="min-w-0 truncate text-body-sm text-ink">{t.title}</span>
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                  <span className="shrink-0 font-mono text-footnote tabular-nums text-muted">
                     {t.health.score === null ? "—" : pct(t.health.score)}
                   </span>
                 </div>
@@ -64,13 +64,13 @@ export function GoalHealth({ data }: WidgetProps) {
                           }}
                         />
                       </div>
-                      <div className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+                      <div className="mt-1 truncate font-mono text-micro uppercase tracking-label text-faint">
                         {COMPONENT_LABEL[c.name] ?? titleCase(c.name)}
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] text-faint">
+                <div className="text-footnote text-faint">
                   {goal.title}
                   {t.days_since_last_session !== null &&
                     ` · Last Worked ${num(t.days_since_last_session, 0)}d Ago`}
